@@ -1461,8 +1461,45 @@ async function backupToSheet(btn) {
   } catch (e) { toast(gsErr(e)); }
   finally { btn.disabled = false; btn.textContent = old; }
 }
+/* Settings from a backup file: the owner may choose to use them (prices, markups, shop details).
+   The links that belong to this Shop Book itself are kept: backup form, its sheet, backup copy sheet, catalogue switch. */
+const SET_KEEP = ['formSheetId', 'backupSheetId', 'formUrl', 'catalog'];
+const SET_LABEL = { business: 'Business name', town: 'Town', phone: 'Phone', address: 'Address', seller: "Seller's name", bargain: 'Bargaining room',
+  floor: 'Lowest price (above own cost)', step: 'Round prices to', floorStep: 'Round lowest prices to', logo: 'Logo', receiptNote: 'Receipt note',
+  markups: 'Markup', floors: 'Lowest %', nextOrder: 'Next order' };
+const SET_PCT = k => /^(bargain|floor|markups\..+|floors\..+)$/.test(k);
+function setFlat(o) {
+  const f = {};
+  Object.keys(o || {}).forEach(k => {
+    if (k === 'id' || SET_KEEP.includes(k)) return;
+    const v = o[k];
+    if (v && typeof v === 'object' && !Array.isArray(v)) Object.keys(v).forEach(s => { f[k + '.' + s] = v[s]; });
+    else f[k] = v;
+  });
+  return f;
+}
+function setLabel(k) { const [a, b] = k.split('.'); return (SET_LABEL[a] || a) + (b ? ' – ' + b : ''); }
+function setShow(k, v) {
+  if (v === undefined || v === null || v === '') return '(empty)';
+  if (k === 'logo') return 'a picture';
+  if (SET_PCT(k) && typeof v === 'number') return Math.round(v * 100) + '%';
+  if ((k === 'step' || k === 'floorStep') && typeof v === 'number') return 'D' + v;
+  const t = typeof v === 'object' ? JSON.stringify(v) : String(v);
+  return t.length > 60 ? t.slice(0, 57) + '…' : t;
+}
+/* what the settings would become, and the list of changes from now */
+function settingsFromFile(fileS) {
+  const cur = { ...(S.settings || {}) }; delete cur.id;
+  const f = { ...(fileS || {}) }; delete f.id; SET_KEEP.forEach(k => delete f[k]);
+  const next = { ...cur, ...f };
+  const a = setFlat(cur), b = setFlat(next), changes = [];
+  [...new Set([...Object.keys(a), ...Object.keys(b)])].sort().forEach(k => {
+    if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) changes.push({ k, from: a[k], to: b[k] });
+  });
+  return { next, changes };
+}
 function restoreSheet() {
-  openSheet('Restore from a backup file', `<p class="note" style="margin:0">Choose a backup file made with "Download backup". Records that are missing from the Shop Book are put back. Records that already exist are <b>not</b> changed.</p>
+  openSheet('Restore from a backup file', `<p class="note" style="margin:0">Choose a backup file made with "Download backup". Records that are missing from the Shop Book are put back. Records that already exist are <b>not</b> changed. You can also choose to use the settings saved in the file (you see every change first).</p>
     <input id="rsF" type="file" accept=".xlsx"><div id="rsB" class="list" style="gap:10px"></div>`, sh => {
     $('#rsF', sh).addEventListener('change', async e => {
       const file = e.target.files && e.target.files[0]; if (!file) return; const box = $('#rsB', sh); box.innerHTML = '<p class="note">Reading…</p>';
@@ -1473,13 +1510,37 @@ function restoreSheet() {
         const have = {}; BK_COLLS.forEach(([k, f]) => have[k] = new Set(f().map(d => String(d.id))));
         const missing = rows.filter(r => have[r[0]] && !have[r[0]].has(String(r[1])));
         const byC = {}; rows.forEach(r => { byC[r[0]] = byC[r[0]] || [0, 0]; byC[r[0]][0]++; }); missing.forEach(r => byC[r[0]][1]++);
+        // the file's settings, when this Shop Book already has its own (otherwise they come back as a missing record)
+        const setRow = rows.find(r => r[0] === 'settings' && String(r[1]) === 'main');
+        let fileSet = null; if (setRow && S.settings && OWN()) { try { fileSet = JSON.parse(setRow.slice(2).join('')); } catch {} }
+        const sf = fileSet ? settingsFromFile(fileSet) : null, nCh = sf ? sf.changes.length : 0;
+        const setBox = !fileSet ? '' : nCh ? `<div class="panel" style="padding:12px"><label class="row" style="flex-wrap:nowrap;font-weight:700"><input type="checkbox" id="rsSet" style="width:22px;min-height:22px"> Also use the settings from this file (${nCh} change${nCh === 1 ? '' : 's'})</label>
+            <div class="small" style="margin-top:8px;display:grid;gap:3px">${sf.changes.slice(0, 40).map(c => `<div>${esc(setLabel(c.k))}: ${esc(setShow(c.k, c.from))} → <b>${esc(setShow(c.k, c.to))}</b></div>`).join('')}${nCh > 40 ? `<div class="muted">and ${nCh - 40} more</div>` : ''}</div>
+            <p class="note" style="margin:8px 0 0">Prices of items that follow the group markups change with them. This Shop Book's backup form, its sheets and the catalogue switch stay as they are.</p></div>`
+          : '<p class="note">The settings in this file are the same as the settings now.</p>';
+        const label = () => { const useSet = !!($('#rsSet', sh) && $('#rsSet', sh).checked);
+          if (missing.length && useSet) return `Put back ${missing.length} missing record${missing.length === 1 ? '' : 's'} and use the settings`;
+          if (missing.length) return `Put back ${missing.length} missing record${missing.length === 1 ? '' : 's'}`;
+          return useSet ? 'Use the settings from this file' : ''; };
         box.innerHTML = `<div class="tablewrap"><table><thead><tr><th>Records</th><th class="n">In the file</th><th class="n">Missing here</th></tr></thead><tbody>${Object.entries(byC).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="n">${v[0]}</td><td class="n"><b>${v[1]}</b></td></tr>`).join('')}</tbody></table></div>
-          ${missing.length ? `<button type="button" class="btn primary lg block" id="rsGo">Put back ${missing.length} missing record${missing.length === 1 ? '' : 's'}</button>` : '<p class="note">Nothing is missing. The Shop Book already has every record in this file.</p>'}`;
-        const go = $('#rsGo', sh); if (go) go.onclick = async () => { go.disabled = true; let n = 0;
+          ${missing.length ? '' : '<p class="note">No records are missing. The Shop Book already has every record in this file.</p>'}${setBox}
+          <button type="button" class="btn primary lg block" id="rsGo" ${label() ? '' : 'hidden'}>${esc(label())}</button>`;
+        const go = $('#rsGo', sh), cb = $('#rsSet', sh);
+        if (cb) cb.addEventListener('change', () => { const t = label(); go.hidden = !t; go.textContent = t; });
+        go.onclick = async () => { go.disabled = true; let n = 0; const useSet = !!(cb && cb.checked);
           for (const r of missing) { let d; try { d = JSON.parse(r.slice(2).join('')); } catch { continue; }
             go.textContent = `Putting back ${n + 1} of ${missing.length}…`;
             if (!(await write(() => S.db.doc(r[0] + '/' + r[1]).set(d), null))) { go.disabled = false; go.textContent = 'Try again'; toast(`Stopped after ${n}.`); return; } n++; }
-          logEvent('Restore', '', `${n} records put back from ${file.name}`); closeSheet(); toast(`${n} record${n === 1 ? '' : 's'} put back`); };
+          if (n) logEvent('Restore', '', `${n} records put back from ${file.name}`);
+          if (useSet) {
+            go.textContent = 'Using the settings…';
+            const before = S.settings ? { ...S.settings } : null, keep = {};
+            SET_KEEP.forEach(k => { if (before && before[k] !== undefined) keep[k] = before[k]; });
+            const next = { ...settingsFromFile(fileSet).next, ...keep };
+            if (!(await write(() => S.db.doc('settings/main').set(next), null))) { go.disabled = false; go.textContent = 'Try again'; toast(n ? `${n} put back; the settings were not changed.` : 'The settings were not changed.'); return; }
+            logEvent('Settings restored', 'settings', `${nCh} setting${nCh === 1 ? '' : 's'} taken from ${file.name}`, before && { ...before, logo: before.logo ? '(picture not kept in the log)' : '' });
+          }
+          closeSheet(); toast([n ? `${n} record${n === 1 ? '' : 's'} put back` : '', useSet ? 'settings taken from the file' : ''].filter(Boolean).join(', ').replace(/^./, c => c.toUpperCase())); };
       } catch (err) { box.innerHTML = `<div class="alert bad"><b class="i">!</b><div>Could not read the file: ${esc((err && err.message) || 'unknown problem')}</div></div>`; }
     });
   });
