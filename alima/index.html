@@ -1495,7 +1495,7 @@ function catalogPanel() {
   const on = catOn(), link = catLink(), c = S.catalog;
   const when = c && c.at ? new Date(c.at).toLocaleString('en-GB', { timeZone: TZ, day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
   return `<div class="panel"><div class="spread"><h2>Public catalogue</h2><span class="pill ${on ? 'ok' : ''}">${on ? 'On' : 'Off'}</span></div>
-    <p class="note">A page anyone can open with the link, no PIN: the products for sale with photo, name, sizes, <b>asking price</b>, <b>target price</b> and <b>pieces left</b>. It never shows costs, lowest prices, customers or money totals.</p>
+    <p class="note">A page anyone can open with the link, no PIN: the products for sale with photo, name, sizes, <b>one price</b> (your target price) and <b>pieces left</b>. It never shows asking prices, lowest prices, costs, customers or money totals.</p>
     ${on && link ? `<p style="margin:8px 0 0;overflow-wrap:anywhere">Link: <a href="${esc(link)}" target="_blank" rel="noopener"><b>${esc(link)}</b></a></p>
       <div class="fgrid" style="margin-top:8px"><button type="button" class="btn" data-act="catCopy">Copy the link</button><a class="btn" href="https://wa.me/?text=${encodeURIComponent(BIZ() + ': see what we have in stock ' + link)}" target="_blank" rel="noopener">Share on WhatsApp</a></div>` : ''}
     ${on && !link ? '<p class="note">Open the Shop Book app (the installed one) to see and copy the link.</p>' : ''}
@@ -1505,7 +1505,7 @@ function catalogPanel() {
 function catalogBody() {
   const items = [];
   S.ships.filter(sh => sh.status === 'Selling' && !/sample shipment \(for testing\)/i.test(sh.name || '')).forEach(sh => {
-    calcShip(sh).items.filter(r => r.forSale && r.left > 0).forEach(r => items.push({ id: r.id, code: String(r.code || ''), name: String(r.name || ''), group: String(r.group || ''), sizes: String(r.sizes || ''), ask: num(r.ask), target: num(r.target), left: num(r.left) }));
+    calcShip(sh).items.filter(r => r.forSale && r.left > 0).forEach(r => items.push({ id: r.id, code: String(r.code || ''), name: String(r.name || ''), group: String(r.group || ''), sizes: String(r.sizes || ''), price: num(r.target), left: num(r.left) }));
   });
   items.sort((a, b) => a.group.localeCompare(b.group) || a.code.localeCompare(b.code));
   const st = ST();
