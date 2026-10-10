@@ -584,7 +584,7 @@ const DEFAULT_SETTINGS = {business:'',  markups:{'General':0.45,'Shop equipment'
 /* ---------- state ---------- */
 const S = { db:null, user:null, uid:null, canWrite:true, noDb:false, settings:null, ships:[], items:[], sales:[], expenses:[],
   got:{settings:false, ships:false, items:false, sales:false, expenses:false}, names:{},
-  tab: store.get('tab') || 'home', shipId: store.get('ship') || '', stockGroup:'All', stockQ:'', sellQ:'', custQ:'', customers:[], isOwner:false, adjustments:[], cashups:[], counts:[], log:[], meta:{}, cashDate:'', insights:false, priceCard:false, basket:null, basketForm:null, selMode:false, sel:new Set() };
+  tab: store.get('tab') || 'home', shipId: store.get('ship') || '', stockGroup:'All', stockQ:'', sellQ:'', custQ:'', recentQ:'', recentN:25, customers:[], isOwner:false, adjustments:[], cashups:[], counts:[], log:[], meta:{}, cashDate:'', insights:false, priceCard:false, basket:null, basketForm:null, selMode:false, sel:new Set() };
 const ST = () => Object.assign({}, DEFAULT_SETTINGS, S.settings || {});
 
 /* ---------- calculations (same method as the Excel workbook) ---------- */
@@ -795,7 +795,12 @@ function vSell() {
   const c = calcShip(ship);
   const q = S.sellQ.trim().toLowerCase();
   const its = c.items.filter(r => r.forSale && (!q || (r.name + ' ' + r.code + ' ' + r.group).toLowerCase().includes(q)));
-  const recent = c.sales.slice().sort((a, b) => String(b.date + (b.createdAt || '')).localeCompare(String(a.date + (a.createdAt || '')))).slice(0, 25);
+  // Recent sales: newest first, 25 at a time; search by item, customer, phone, receipt number, size or note
+  const rq = S.recentQ.trim().toLowerCase(), rqd = rq.replace(/\D/g, '');
+  const found = c.sales.filter(s => !rq || [s.name, s.code, s.customer, s.phone, s.invoiceNo, s.size, s.note, s.payment, s.channel].join(' ').toLowerCase().includes(rq)
+      || (rqd.length >= 4 && String(s.phone || '').replace(/\D/g, '').includes(rqd)))
+    .sort((a, b) => String(b.date + (b.createdAt || '')).localeCompare(String(a.date + (a.createdAt || ''))));
+  const recent = found.slice(0, S.recentN);
   const bq = {}; (S.basket || []).forEach(l => { bq[l.itemId] = (bq[l.itemId] || 0) + num(l.qty); });
   const bTot = basketTotals();
   return `<section class="screen">
@@ -807,8 +812,11 @@ function vSell() {
       ${bq[r.id] ? `<span class="inb">${bq[r.id]} in basket</span>` : ''}${r.photo ? `<img src="${esc(r.photo)}" alt="" loading="lazy">` : `<span class="ph">${esc(r.code)}</span>`}
       <span class="n">${esc(r.name)}</span><span class="small"><b style="color:var(--target)">${D(r.used)}</b> · <span class="muted">${r.left} left</span></span></button>`).join('') || '<div class="empty">No items match.</div>'}</div>
   </div>
-  <div class="panel"><h2>Recent sales</h2>
-    ${recent.length ? `<div class="list" style="margin-top:6px">${recent.map(s => saleLine(s, c)).join('')}</div>` : '<div class="empty">No sales yet. Tap an item above to record the first one.</div>'}
+  <div class="panel"><div class="spread"><h2>Recent sales</h2>${c.sales.length ? `<span class="muted small">${rq ? `${found.length} found` : `${recent.length} of ${c.sales.length}`}</span>` : ''}</div>
+    ${c.sales.length ? `<input id="recentQ" type="search" placeholder="Find a sale: name, phone or receipt no." value="${esc(S.recentQ)}" style="margin:12px 0 0" aria-label="Find a sale">` : ''}
+    ${recent.length ? `<div class="list" style="margin-top:6px">${recent.map(s => saleLine(s, c)).join('')}</div>` : c.sales.length ? '<div class="empty">No sales match. Check the spelling, or try part of the name or number.</div>' : '<div class="empty">No sales yet. Tap an item above to record the first one.</div>'}
+    ${found.length > recent.length ? `<button type="button" class="btn block" style="margin-top:10px" data-act="recentMore">Show ${Math.min(25, found.length - recent.length)} more (${found.length - recent.length} older)</button>` : ''}
+    ${S.ships.length > 1 ? '<p class="note" style="margin:8px 0 0">Sales of another shipment: choose it at the top.</p>' : ''}
   </div>
   ${S.basket ? `<div style="height:76px" aria-hidden="true"></div><div class="bbar"><div class="bbar-in" role="region" aria-label="Basket">
     <div class="grow">${bTot.pieces ? D(bTot.total) : 'Basket is empty'}<small>${bTot.pieces ? `${bTot.pieces} piece${bTot.pieces === 1 ? '' : 's'} · ${S.basket.length} item${S.basket.length === 1 ? '' : 's'}` : 'Tap the items above'}</small></div>
@@ -2912,6 +2920,7 @@ document.addEventListener('click', e => {
   else if (a === 'formImport') formImportSheet();
   else if (a === 'formItems') syncFormItems(t);
   else if (a === 'editSale') saleSheet(null, id);
+  else if (a === 'recentMore') { S.recentN += 25; render(); }
   else if (a === 'receipt') receiptSheet(id);
   else if (a === 'pay') paySheet(id);
   else if (a === 'item') itemSheet(id);
@@ -2936,15 +2945,15 @@ document.addEventListener('click', e => {
   else if (a === 'csvSales') csv('sales'); else if (a === 'csvStock') csv('stock'); else if (a === 'csvExp') csv('exp');
 });
 document.addEventListener('input', e => {
-  if (e.target.id === 'sellQ' || e.target.id === 'stockQ' || e.target.id === 'custQ') {
+  if (e.target.id === 'sellQ' || e.target.id === 'stockQ' || e.target.id === 'custQ' || e.target.id === 'recentQ') {
     const id = e.target.id, pos = e.target.selectionStart;
-    if (id === 'sellQ') S.sellQ = e.target.value; else if (id === 'custQ') S.custQ = e.target.value; else S.stockQ = e.target.value;
+    if (id === 'sellQ') S.sellQ = e.target.value; else if (id === 'custQ') S.custQ = e.target.value; else if (id === 'recentQ') { S.recentQ = e.target.value; S.recentN = 25; } else S.stockQ = e.target.value;
     render(); const el = document.getElementById(id); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch {} }
   }
 });
 document.addEventListener('change', e => { if (e.target.id === 'cashDate') { S.cashDate = e.target.value || today(); render(); } if (e.target.id === 'pfEq') { S.profitEquip = e.target.checked; render(); } });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#sheetRoot').innerHTML) closeSheet(); });
-$('#shipPick').addEventListener('change', e => { S.shipId = e.target.value; S.selMode = false; S.sel = new Set(); store.set('ship', S.shipId); render(); });
+$('#shipPick').addEventListener('change', e => { S.shipId = e.target.value; S.recentN = 25; S.selMode = false; S.sel = new Set(); store.set('ship', S.shipId); render(); });
 
 async function hydrateNames() {
   if (!S.user || !S.user.profiles) return;
