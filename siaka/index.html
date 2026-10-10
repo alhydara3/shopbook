@@ -747,18 +747,18 @@ function vHome() {
   if (nd) { const dl = daysUntil(nd.orderBy); if (dl != null && dl >= 0 && dl <= 30) alerts.push(['warn', '!', `${esc(no.festival || 'Next')} order must be placed by ${nice(nd.orderBy)} — ${dl} days left. Have the cash by ${nice(nd.cashBy)}.`]); }
   const best = c.items.filter(r => r.forSale).sort((a, b) => b.thru - a.thru || b.sold - a.sold).slice(0, 6);
   return `<section class="screen">
-  <div class="panel">
+  ${S.isOwner ? `<div class="panel">
     <div class="spread"><div><div class="label">Money back so far</div><div class="big">${D(c.cash)} <span class="muted" style="font-size:18px;font-weight:600">of ${D(c.payBack)}</span></div></div>
       <span class="pill ${frac >= 1 ? 'ok' : ''}">${P(frac)} recovered</span></div>
     <div class="prog" style="margin-top:12px" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(frac * 100)}"><i style="width:${Math.min(100, frac * 100)}%"></i>${marks}</div>
     <p class="small" style="margin:10px 0 0">${frac >= 1 ? `All the money spent on this shipment is back. <b>Profit in hand: ${D(c.cash - c.payBack)}</b>.` : `Still to recover: <b>${D(c.payBack - c.cash)}</b>.${nextGoal ? ` Next goal: <b>${esc(nextGoal.label)}</b>, ${D(num(nextGoal.pct) * c.payBack)} by ${nice(nextGoal.date)}.` : ''}`}</p>
     ${goalRows ? `<div class="goals">${goalRows}</div>` : ''}
-  </div>
+  </div>` : ''}
   <div class="grid-tiles">
     <div class="tile"><div class="label">Sales</div><div class="v">${D(c.salesValue)}</div><div class="s">${c.piecesSold} of ${c.piecesForSale} pieces sold</div></div>
     <div class="tile"><div class="label">Owed by customers</div><div class="v">${D(c.owed)}</div><div class="s">credit not yet paid</div></div>
     <div class="tile"><div class="label">Stock left</div><div class="v">${c.piecesLeft} pcs</div><div class="s">worth ${D(c.stockLeftValue)} at target</div></div>
-    <div class="tile"><div class="label">Profit if the rest sells at target</div><div class="v" style="color:${c.projectedProfit >= 0 ? 'var(--target)' : 'var(--low)'}">${D(c.projectedProfit)}</div><div class="s">after all costs and expenses</div></div>
+    ${S.isOwner ? `<div class="tile"><div class="label">Profit if the rest sells at target</div><div class="v" style="color:${c.projectedProfit >= 0 ? 'var(--target)' : 'var(--low)'}">${D(c.projectedProfit)}</div><div class="s">after all costs and expenses</div></div>` : ''}
   </div>
   ${alerts.length ? `<div class="panel"><h2>Needs attention</h2><div class="list" style="gap:8px;margin-top:10px">${alerts.map(([k, i, t]) => `<div class="alert ${k}"><b class="i">${i}</b><span>${t}</span></div>`).join('')}</div></div>` : ''}
   <div class="two">
@@ -894,7 +894,7 @@ function vMoney() {
   const shipName = id => (S.ships.find(s => s.id === id) || {}).name || 'Whole business';
   return `<section class="screen">
   ${dayPanel()}
-  ${profitPanel()}
+  ${S.isOwner ? `${profitPanel()}
   <div class="grid-tiles">
     <div class="tile"><div class="label">Cash in (all shipments)</div><div class="v">${D(totIn)}</div><div class="s">money collected from sales</div></div>
     <div class="tile"><div class="label">Money out</div><div class="v">${D(totOut)}</div><div class="s">shipments + expenses</div></div>
@@ -903,13 +903,13 @@ function vMoney() {
   <div class="panel"><h2>Each shipment</h2><div class="tablewrap" style="margin-top:10px"><table>
     <thead><tr><th>Shipment</th><th class="n">Cost</th><th class="n">Expenses</th><th class="n">Sales</th><th class="n">Cash in</th><th class="n">Owed</th><th class="n">Profit so far</th><th class="n">If rest sells at target</th></tr></thead>
     <tbody>${calcs.map(c => `<tr><td>${esc(c.ship.name)}<br><span class="small muted">${esc(c.ship.status || '')}</span></td><td class="n">${D(c.shipmentCost)}</td><td class="n">${D(c.expenses)}</td><td class="n">${D(c.salesValue)}</td><td class="n">${D(c.cash)}</td><td class="n">${D(c.owed)}</td><td class="n"><b style="color:${c.cash - c.payBack >= 0 ? 'var(--target)' : 'var(--low)'}">${D(c.cash - c.payBack)}</b></td><td class="n">${D(c.projectedProfit)}</td></tr>`).join('')}</tbody></table></div>
-    <p class="note">"Profit so far" is cash in minus everything this shipment cost (goods, transport, commission, shipping and its expenses). It turns positive once all the money is back.${calcs.some(c => c.unrec > 1) ? ' Shop equipment carried to later shipments is left out.' : ''}</p></div>
+    <p class="note">"Profit so far" is cash in minus everything this shipment cost (goods, transport, commission, shipping and its expenses). It turns positive once all the money is back.${calcs.some(c => c.unrec > 1) ? ' Shop equipment carried to later shipments is left out.' : ''}</p></div>` : ''}
   <div class="panel"><div class="spread"><h2>Expenses</h2>${S.canWrite ? '<button type="button" class="btn primary" data-act="newExp">Add expense</button>' : ''}</div>
     <p class="note">Record real running costs here: rent, delivery, data, ${esc(SELLER())}'s pay. Link each one to a shipment, or to the whole business.</p>
     ${exps.length ? `<div class="list">${exps.map(e => `<div class="li" style="grid-template-columns:1fr auto"><div><div class="t">${esc(e.category)}${e.note ? ' — <span style="font-weight:400">' + esc(e.note) + '</span>' : ''}</div><div class="small muted">${nice(e.date)} · ${esc(shipName(e.ship))}</div></div><div style="text-align:right"><b>${D(e.amount)}</b>${S.canWrite ? `<br><button type="button" class="btn ghost" style="min-height:32px;padding:3px 8px;font-size:13px" data-act="editExp" data-id="${esc(e.id)}">Edit</button>` : ''}</div></div>`).join('')}</div>` : '<div class="empty">No expenses recorded yet.</div>'}
   </div>
-  <div class="panel"><h2>Download records</h2><p class="note">Save the sales or the stock list as a CSV file to open in Excel.</p>
-    <div class="row"><button type="button" class="btn" data-act="csvSales">Sales (CSV)</button><button type="button" class="btn" data-act="csvStock">Stock & prices (CSV)</button><button type="button" class="btn" data-act="csvExp">Expenses (CSV)</button></div></div>
+  ${S.isOwner ? `<div class="panel"><h2>Download records</h2><p class="note">Save the sales or the stock list as a CSV file to open in Excel.</p>
+    <div class="row"><button type="button" class="btn" data-act="csvSales">Sales (CSV)</button><button type="button" class="btn" data-act="csvStock">Stock & prices (CSV)</button><button type="button" class="btn" data-act="csvExp">Expenses (CSV)</button></div></div>` : ''}
   </section>`;
 }
 
@@ -933,22 +933,23 @@ function vSetup() {
       ${c.nfsRMB > 0 ? `<span>With shop equipment (${P(c.recover)} paid back by this stock)</span><b>D${c.saleMult.toFixed(2)}</b>` : ''}
     </div>
     <p class="note">Landed cost of a piece = China price × D${c.saleMult.toFixed(2)}. Target = landed cost + markup, rounded up to D${num(st.step)}. Ask = target + ${P(st.bargain)}. Lowest = the item's own cost + ${P(st.floor)}${Object.keys(st.floors || {}).length ? ', or the group\'s own %' : ''}. Costs are shared by China price, not by size.</p></div>` : ''}
-  <div class="panel"><div class="spread"><h2>Pricing rules</h2>${OWN() ? '<button type="button" class="btn" data-act="editRules">Edit</button>' : ''}</div>
+  ${S.isOwner ? `<div class="panel"><div class="spread"><h2>Pricing rules</h2>${OWN() ? '<button type="button" class="btn" data-act="editRules">Edit</button>' : ''}</div>
     <div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>Group</th><th class="n">Markup</th><th class="n">Lowest</th></tr></thead><tbody>${Object.entries(st.markups || {}).map(([g, m]) => `<tr><td style="white-space:normal">${esc(g)}</td><td class="n">${P(m)}</td><td class="n">${hasPct((st.floors || {})[g]) ? '<b>+' + P(st.floors[g]) + '</b>' : '+' + P(st.floor)}</td></tr>`).join('')}</tbody></table></div>
-    <p class="note">Bargaining room ${P(st.bargain)} · lowest = own cost + ${P(st.floor)} unless the group shows its own (bold) · prices rounded up to D${num(st.step)}.</p></div>
+    <p class="note">Bargaining room ${P(st.bargain)} · lowest = own cost + ${P(st.floor)} unless the group shows its own (bold) · prices rounded up to D${num(st.step)}.</p></div>` : ''}
   <div class="panel"><div class="spread"><h2>Next order planner</h2>${OWN() ? '<button type="button" class="btn" data-act="editOrder">Edit</button>' : ''}</div>
     ${nd ? `<div class="kv" style="margin-top:10px"><span>${esc(st.nextOrder.festival || 'Festival')}</span><b>${nice(st.nextOrder.festivalDate)}</b><span>Goods in the shop ${num(st.nextOrder.daysBefore)} days before</span><b>${nice(nd.inShop)}</b><span>Order-to-shop time + safety buffer</span><b>${num(st.nextOrder.leadDays)} + ${num(st.nextOrder.bufferDays)} days</b><span class="tot">Place the order by</span><b class="tot">${nice(nd.orderBy)}</b><span>Cash ready by</span><b>${nice(nd.cashBy)}</b></div>
     <p class="note">To estimate what the order will cost, add it as a new shipment with status "Planning" (you can import the Excel template), and the cost and prices are worked out the same way.</p>` : '<p class="note">No next order planned yet.</p>'}</div>
-  <div class="panel"><div class="spread"><h2>Backup Google Form</h2>${OWN() ? '<button type="button" class="btn ghost" data-act="formSetup">Form settings</button>' : ''}</div>
+  ${S.isOwner ? `<div class="panel"><div class="spread"><h2>Backup Google Form</h2>${OWN() ? '<button type="button" class="btn ghost" data-act="formSetup">Form settings</button>' : ''}</div>
     <p class="note">If the Shop Book will not open, ${esc(SELLER())} can record sales in a Google Form. Then tap <b>Check for form sales</b> here to bring them in. The form also needs internet, but it is much lighter to open.</p>
     ${st.formUrl ? `<p style="margin:8px 0 0;overflow-wrap:anywhere">Form link for ${esc(SELLER())}: <a href="${esc(st.formUrl)}" target="_blank" rel="noopener"><b>${esc(st.formUrl)}</b></a></p>` : ''}
     ${!st.formSheetId ? '<p class="note">Not set up yet: tap Form settings and paste the link of the Google Sheet.</p>'
       : OWN() ? `<div class="fgrid" style="margin-top:10px"><button type="button" class="btn primary" data-act="formImport">Check for form sales</button><button type="button" class="btn" data-act="formItems">Send item list to the form</button></div>
       <p class="small muted" id="formStatus" style="margin:8px 0 0">${esc(S.formStatus || '')}</p>` : ''}
-    <p class="note">Only works for an account that has Google Sheets connected in Claude (the owner's).</p></div>
-  ${backupPanel()}
+    <p class="note">Only works for an account that has Google Sheets connected in Claude (the owner's).</p></div>` : (st.formUrl ? `<div class="panel"><h2>Backup Google Form</h2><p class="note">If the Shop Book will not open, record sales in this Google Form. It also needs internet, but it is much lighter to open.</p>
+    <p style="margin:8px 0 0;overflow-wrap:anywhere">Form link: <a href="${esc(st.formUrl)}" target="_blank" rel="noopener"><b>${esc(st.formUrl)}</b></a></p></div>` : '')}
+  ${S.isOwner ? backupPanel() : ''}
   ${catalogPanel()}
-  <div class="panel"><div class="spread"><h2>Change log</h2><button type="button" class="btn" data-act="log">Open the log</button></div><p class="note">Every edit, delete, return, payment, stock change and cash-up is written down with who did it and when.${OWN() ? ' Deleted sales can be put back from the log.' : ''}</p></div>
+  <div class="panel"><div class="spread"><h2>Change log</h2><button type="button" class="btn" data-act="log">Open the log</button></div><p class="note">${S.isOwner ? 'Every edit, delete, return, payment, stock change and cash-up is written down with who did it and when.' : 'Sales, returns, payments, expenses, stock changes and cash-ups are written down with who did them and when.'}${OWN() ? ' Deleted sales can be put back from the log.' : ''}</p></div>
   <div class="panel"><h2>Who can do what</h2><p class="note">Only the owner can change prices, markups, items and shipments. Editors (like ${esc(SELLER())}) record sales, payments, returns, expenses, stock changes and cash-ups. Anyone with view access can only look.${S.isOwner ? ' You are the owner.' : ''}</p></div>
   </section>`;
 }
@@ -1196,9 +1197,12 @@ function logEvent(action, ref, summary, before) {
   S.db.collection('log').add(d).catch(() => {});
 }
 function whoName(id) { return (id && S.names[id]) || (id && id === S.uid ? 'you' : 'someone'); }
+/* what a seller (anyone but the owner) sees in the change log: the day-to-day records, never prices, markups, settings or shipments */
+const LOG_SELLER = ['Deleted a sale', 'Edited a sale', 'Put back a deleted sale', 'Return', 'Payment received', 'Credit reminder', 'Receipt sent',
+  'Changed an expense', 'Deleted an expense', 'Stock change', 'Stock count', 'Closed the day', 'Imported form sales'];
 function logSheet() {
-  const L = S.log.slice().sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 80);
-  openSheet('Change log', `<p class="note" style="margin:0">Every edit, delete, return, payment, stock change and cash-up, newest first.${OWN() ? ' A deleted sale can be put back from here.' : ''}</p>
+  const L = S.log.filter(e => S.isOwner || LOG_SELLER.includes(e.action)).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 80);
+  openSheet('Change log', `<p class="note" style="margin:0">${S.isOwner ? 'Every edit, delete, return, payment, stock change and cash-up, newest first.' : 'Sales, returns, payments, expenses, stock changes and cash-ups, newest first.'}${OWN() ? ' A deleted sale can be put back from here.' : ''}</p>
     <div class="list">${L.map(e => `<div class="li" style="grid-template-columns:1fr auto"><div style="min-width:0"><div class="t small">${esc(e.action)}</div><div class="small">${esc(e.summary)}</div>
       <div class="small muted">${esc(new Date(e.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: TZ }))} · by ${esc(whoName(e.by))}</div></div>
       <div>${OWN() && e.action === 'Deleted a sale' && e.before && e.ref && !S.sales.some(s => s.id === e.ref) ? `<button type="button" class="btn ghost" style="min-height:34px;padding:4px 8px;font-size:13px" data-undel="${esc(e.id)}">Put back</button>` : ''}</div></div>`).join('') || '<div class="empty">Nothing recorded yet.</div>'}</div>`, sh => {
@@ -1560,7 +1564,7 @@ function catalogPanel() {
     ${on && link ? `<p style="margin:8px 0 0;overflow-wrap:anywhere">Link: <a href="${esc(link)}" target="_blank" rel="noopener"><b>${esc(link)}</b></a></p>
       <div class="fgrid" style="margin-top:8px"><button type="button" class="btn" data-act="catCopy">Copy the link</button><a class="btn" href="https://wa.me/?text=${encodeURIComponent(BIZ() + ': see what we have in stock ' + link)}" target="_blank" rel="noopener">Share on WhatsApp</a></div>` : ''}
     ${on && !link ? '<p class="note">Open the Shop Book app (the installed one) to see and copy the link.</p>' : ''}
-    ${on ? `<p class="small muted" style="margin:8px 0 0">${c ? `Last updated ${esc(when)} · ${(c.items || []).length} products` : 'Being prepared…'}. It updates by itself whenever you or ${esc(SELLER())} open the Shop Book.</p>` : ''}
+    ${on ? `<p class="small muted" style="margin:8px 0 0">${c ? `Last updated ${esc(when)} · ${(c.items || []).length} products` : 'Being prepared'}. It updates by itself whenever you or ${esc(SELLER())} open the Shop Book.</p>` : ''}
     ${OWN() ? `<div class="fgrid" style="margin-top:10px"><button type="button" class="btn ${on ? 'ghost' : 'primary'}" data-act="catToggle">${on ? 'Turn the catalogue off' : 'Turn the catalogue on'}</button></div>` : ''}</div>`;
 }
 function catalogBody() {
