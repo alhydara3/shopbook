@@ -1333,11 +1333,17 @@ async function drawPriceList(rows, opt, logo) {
       if (im) { const s = Math.min(im.width / w, im.height / ph); const sw = w * s, sh2 = ph * s; c.drawImage(im, (im.width - sw) / 2, (im.height - sh2) / 2, sw, sh2, cx, cy, w, ph); }
       else { c.fillStyle = '#e3e8ef'; c.fillRect(cx, cy, w, ph); c.fillStyle = '#5a6878'; c.font = font(700, 30); c.textAlign = 'center'; c.fillText(x.r.code, cx + w / 2, cy + ph / 2); c.textAlign = 'left'; }
       c.restore();
-      c.fillStyle = '#14202e'; c.font = font(700, 27); let name = x.r.name; while (c.measureText(name).width > w - 24 && name.length > 4) name = name.slice(0, -2); if (name !== x.r.name) name = name.trim() + '…';
+      // item code: a label on the photo's top-left corner, so it never competes with the name for space
+      if (opt.showCode && im && x.r.code) { c.font = font(700, 22); const tw = c.measureText(x.r.code).width, bx = cx + 10, by = cy + 10, bw = tw + 20, bh = 34;
+        c.fillStyle = 'rgba(20,32,46,0.82)'; c.beginPath(); c.roundRect ? c.roundRect(bx, by, bw, bh, 8) : c.rect(bx, by, bw, bh); c.fill();
+        c.fillStyle = '#fff'; c.textBaseline = 'middle'; c.fillText(x.r.code, bx + 10, by + bh / 2 + 1); c.textBaseline = 'alphabetic'; }
+      // name: the whole card width; a smaller size before it is shortened with "…"
+      c.fillStyle = '#14202e'; let name = x.r.name, fs = 27; c.font = font(700, fs);
+      while (c.measureText(name).width > w - 24 && fs > 22) { fs -= 1; c.font = font(700, fs); }
+      while (c.measureText(name).width > w - 24 && name.length > 4) name = name.slice(0, -2); if (name !== x.r.name) name = name.trim() + '…';
       c.fillText(name, cx + 12, cy + ph + 40);
       c.fillStyle = '#1b7f3b'; c.font = font(700, 40); c.fillText(D(opt.price === 'target' ? x.r.used : x.r.ask), cx + 12, cy + ph + 92);
       if (opt.showLeft && x.r.left <= 3) { c.fillStyle = '#b3261e'; c.font = font(700, 24); c.textAlign = 'right'; c.fillText(x.r.left === 1 ? 'Last one!' : `Only ${x.r.left} left`, cx + w - 12, cy + ph + 90); c.textAlign = 'left'; }
-      if (opt.showCode) { c.fillStyle = '#5a6878'; c.font = font(400, 22); c.textAlign = 'right'; c.fillText(x.r.code, cx + w - 12, cy + ph + 40); c.textAlign = 'left'; }
     });
     c.fillStyle = '#1f3864'; c.fillRect(0, H - foot, W, foot); c.fillStyle = '#fff'; c.textAlign = 'center';
     c.font = font(700, 38); c.fillText(st.phone ? `Order on WhatsApp: ${st.phone}` : (TOWN() ? `${BIZ()}, ${TOWN()}` : BIZ()), W / 2, H - foot + 58);

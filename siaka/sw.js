@@ -1,6 +1,6 @@
 /* Shop Book app: keeps the app's files on the phone so it opens without internet.
    The records themselves are kept by the page (IndexedDB), not here. */
-var KEY = 'siaka', VERSION = 'bc8314a87e38';
+var KEY = 'siaka', VERSION = 'e9ee633a0bb2';
 var CACHE = 'shopbook-' + KEY + '-' + VERSION;
 var SHELL = ['./', './index.html', './config.js', './manifest.webmanifest', './icon-192.png', './icon-512.png',
   './libs/jspdf.umd.min.js', './libs/xlsx.full.min.js', './libs/jszip.min.js'];
