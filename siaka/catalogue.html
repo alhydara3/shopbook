@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1F3864">
+<meta name="robots" content="noindex">
+<title>SIAKA'S STORE · Products</title>
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&display=swap">
+<script src="config.js"></script>
+<style>
+:root{--navy:#1F3864;--ink:#14202e;--muted:#5b6778;--line:#dfe5ee;--bg:#f3f5f9;--card:#fff;--ask:#1F3864;--target:#0f7a43;--target-soft:#e3f4ea;--gold:#f59e0b}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 "Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{background:var(--navy);color:#fff;padding:20px 16px 18px}
+header .in,main{max-width:960px;margin:0 auto}
+h1{font-family:"Bricolage Grotesque",system-ui,sans-serif;font-weight:800;font-size:28px;line-height:1.1;margin:0 0 4px;letter-spacing:-.01em}
+.sub{opacity:.85;font-size:14px}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.acts a{display:inline-flex;align-items:center;gap:6px;min-height:42px;padding:8px 14px;border-radius:999px;font-weight:700;text-decoration:none;font-size:15px}
+.wa{background:#fff;color:var(--navy)}.call{border:1px solid rgba(255,255,255,.5);color:#fff}
+main{padding:14px 16px 40px}
+.tools{position:sticky;top:0;z-index:5;background:var(--bg);padding:10px 0 8px}
+input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#fff}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:10px 0 2px;scrollbar-width:none}
+.chips button{flex:none;font:inherit;font-size:14px;font-weight:700;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:999px;padding:6px 12px;min-height:36px;cursor:pointer}
+.chips button[aria-pressed=true]{background:var(--navy);border-color:var(--navy);color:#fff}
+.count{color:var(--muted);font-size:14px;margin:6px 0 10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+.ph{aspect-ratio:1/1;background:#eef2f6;display:flex;align-items:center;justify-content:center;color:var(--muted);font-weight:700;letter-spacing:.04em}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.body{padding:10px 12px 12px;display:flex;flex-direction:column;gap:6px;flex:1}
+.nm{font-weight:700;line-height:1.25;overflow-wrap:anywhere}
+.sz{font-size:13px;color:var(--muted)}
+.pr{display:grid;gap:4px;margin-top:auto}
+.pr>div{display:flex;justify-content:space-between;align-items:baseline;gap:6px;border-radius:9px;padding:5px 8px}
+.pr .k{font-size:12px;font-weight:700}
+.pr .v{font-family:"Bricolage Grotesque",system-ui,sans-serif;font-weight:800;font-size:17px;line-height:1.1;white-space:nowrap}
+.p-ask{background:#e8edf6;color:var(--ask)}.p-tg{background:var(--target-soft);color:var(--target)}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:13px}
+.left{font-weight:700;color:var(--muted)}
+.ask{color:var(--navy);font-weight:700;text-decoration:none}
+.msg{background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px;text-align:center;color:var(--muted)}
+.msg button{margin-top:12px;font:inherit;font-weight:700;border:0;border-radius:10px;background:var(--navy);color:#fff;padding:10px 18px;min-height:44px;cursor:pointer}
+.note{color:var(--muted);font-size:13px;margin-top:18px;text-align:center}
+@media (min-width:640px){h1{font-size:34px}.grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}}
+</style>
+</head>
+<body>
+<header><div class="in"><h1 id="nm">SIAKA'S STORE</h1><div class="sub" id="sub">Products in stock</div><div class="acts" id="acts"></div></div></header>
+<main>
+  <div class="tools" id="tools" hidden><input type="search" id="q" placeholder="Search: abaya, belt, 43…" aria-label="Search the products"><div class="chips" id="chips" role="group" aria-label="Groups"></div></div>
+  <div class="count" id="count" aria-live="polite"></div>
+  <div id="out"><div class="msg">Loading the products…</div></div>
+  <p class="note">Prices in Dalasi. Asking price = the price we ask; target price = the price we aim for. Stock changes during the day: ask before you come.</p>
+</main>
+<script>
+(function () {
+  'use strict';
+  var CFG = window.SHOP_CONFIG || {}, data = null, group = 'All';
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var D = function (n) { return 'D' + Math.round(Number(n) || 0).toLocaleString('en-US'); };
+  var waNum = function (p) { var d = String(p || '').replace(/\D/g, ''); if (d.indexOf('00') === 0) d = d.slice(2); if (d.length === 7) d = '220' + d; return d; };
+  function load() {
+    $('out').innerHTML = '<div class="msg">Loading the products…</div>';
+    fetch(CFG.api, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'catalogue', args: [] }), credentials: 'omit', cache: 'no-store' })
+      .then(function (r) { return r.text(); })
+      .then(function (t) { var o = JSON.parse(t); if (!o || !o.ok) throw new Error((o && o.error) || 'bad reply'); show(o.value); })
+      .catch(function () { $('out').innerHTML = '<div class="msg">The products could not be loaded. Check the internet and try again.<br><button type="button" id="retry">Try again</button></div>'; $('retry').onclick = load; });
+  }
+  function show(v) {
+    data = v || {};
+    var name = data.business || CFG.name || 'Our shop';
+    $('nm').textContent = name; document.title = name + ' · Products';
+    if (data.off) { $('tools').hidden = true; $('count').textContent = ''; $('out').innerHTML = '<div class="msg">This catalogue is closed right now.</div>'; return; }
+    var when = data.at ? new Date(data.at).toLocaleString('en-GB', { timeZone: 'Africa/Banjul', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+    $('sub').textContent = [data.town, when ? 'updated ' + when : ''].filter(Boolean).join(' · ');
+    var wa = waNum(data.phone), acts = '';
+    if (wa) acts += '<a class="wa" href="https://wa.me/' + wa + '?text=' + encodeURIComponent('Hello ' + name + ', I saw your products.') + '" target="_blank" rel="noopener">WhatsApp us</a><a class="call" href="tel:+' + wa + '">Call ' + esc(data.phone) + '</a>';
+    $('acts').innerHTML = acts;
+    var groups = ['All'].concat((data.items || []).map(function (x) { return x.group; }).filter(function (g, i, a) { return g && a.indexOf(g) === i; }));
+    $('chips').innerHTML = groups.length > 2 ? groups.map(function (g) { return '<button type="button" data-g="' + esc(g) + '" aria-pressed="' + (g === group) + '">' + esc(g) + '</button>'; }).join('') : '';
+    $('tools').hidden = !(data.items || []).length;
+    render();
+  }
+  function render() {
+    var q = $('q').value.trim().toLowerCase(), wa = waNum(data.phone), name = data.business || CFG.name || '';
+    var list = (data.items || []).filter(function (x) {
+      return (group === 'All' || x.group === group) && (!q || (x.name + ' ' + x.code + ' ' + x.group + ' ' + x.sizes).toLowerCase().indexOf(q) >= 0);
+    });
+    $('count').textContent = (data.items || []).length ? list.length + ' product' + (list.length === 1 ? '' : 's') : '';
+    if (!(data.items || []).length) { $('out').innerHTML = '<div class="msg">Nothing in stock to show right now. Come back soon.</div>'; return; }
+    if (!list.length) { $('out').innerHTML = '<div class="msg">Nothing matches your search.</div>'; return; }
+    $('out').innerHTML = '<div class="grid">' + list.map(function (x) {
+      var ph = x.photo ? '<img src="' + esc(x.photo) + '" alt="' + esc(x.name) + '" loading="lazy">' : esc(x.code || '');
+      var askLink = wa ? '<a class="ask" href="https://wa.me/' + wa + '?text=' + encodeURIComponent('Hello ' + name + ', I am interested in ' + x.name + (x.code ? ' (' + x.code + ')' : '') + '.') + '" target="_blank" rel="noopener">Ask us</a>' : '';
+      return '<article class="card"><div class="ph">' + ph + '</div><div class="body"><div class="nm">' + esc(x.name) + '</div>' + (x.sizes ? '<div class="sz">' + esc(x.sizes) + '</div>' : '') +
+        '<div class="pr"><div class="p-ask"><div class="k">Asking</div><div class="v">' + D(x.ask) + '</div></div><div class="p-tg"><div class="k">Target</div><div class="v">' + D(x.target) + '</div></div></div>' +
+        '<div class="foot"><span class="left">' + x.left + ' left</span>' + askLink + '</div></div></article>';
+    }).join('') + '</div>';
+  }
+  $('q').addEventListener('input', function () { if (data) render(); });
+  $('chips').addEventListener('click', function (e) { var b = e.target.closest('[data-g]'); if (!b) return; group = b.getAttribute('data-g'); Array.prototype.forEach.call($('chips').children, function (c) { c.setAttribute('aria-pressed', c === b); }); render(); });
+  if (!CFG.api) { $('out').innerHTML = '<div class="msg">This page is missing the store link.</div>'; return; }
+  load();
+})();
+</script>
+</body>
+</html>

@@ -50,6 +50,8 @@
   var OWNER_ONLY = { settings: 1, shipments: 1, items: 1 };
   var OFFLINE_OWNER = 'No internet: prices, items, shipments and settings can only be changed online.';
   var NO_NET_LOGIN = 'No internet. Connect once to sign in.';
+  // tells the app it runs on the store's own server; the public catalogue page sits next to this app
+  window.SHOPBOOK_SERVER = { catalogueUrl: new URL('catalogue.html', location.origin + location.pathname).href };
   var origFetch = window.fetch.bind(window);
   if (CFG.name) { document.title = CFG.name; }
 
@@ -159,7 +161,9 @@
       }, function (e) {
         if (e && e.net) return;                             // no internet: try again later
         if (e && e.signedOut) { signedOut(); return; }       // keep the waiting changes for after the PIN
-        queue.shift(); failed.push({ what: describe(item.w), why: e && e.message, at: item.at }); resync = true;
+        queue.shift();
+        if (item.w.path === 'catalog/main') return saveQueue().then(next);   // the public list is rebuilt on the next change: no alarm
+        failed.push({ what: describe(item.w), why: e && e.message, at: item.at }); resync = true;
         return saveQueue().then(next);
       });
     }
@@ -196,6 +200,9 @@
     if (w.op === 'update' && !cache.has(w.path)) return Promise.reject({ code: 'invalid_argument', message: 'not_found' });
     // everything else: saved on this phone at once, sent when there is internet
     var item = { w: clone(w), at: Date.now() };
+    // a full replace (set) or delete makes earlier waiting changes to the same record pointless (keeps the
+    // queue short when, say, the catalogue list is rewritten after every offline sale); never touch the one being sent
+    if (w.op === 'set' || w.op === 'delete') queue = queue.filter(function (q, i) { return q.w.path !== w.path || (flushing && i === 0); });
     queue.push(item);
     apply(localChange(item.w));
     return saveQueue().then(function () { showSync(); setTimeout(flush, 0); return { path: w.path, t: item.at, data: cache.get(w.path) || null }; });
@@ -695,6 +702,7 @@ function render() {
   else html = ({home: vHome, sell: vSell, stock: vStock, credit: vCredit, money: vMoney, setup: vSetup}[S.tab] || vHome)();
   main.innerHTML = html;
   hydrateNames();
+  catalogTick();
 }
 function needShip() {
   return `<div class="panel empty"><h2>No shipment yet</h2><p>Add your first shipment in Setup: the money you exchanged, the costs, and the items you bought.</p>${OWN() ? '<button class="btn primary" data-act="newShip">Add a shipment</button>' : ''}</div>`;
@@ -939,6 +947,7 @@ function vSetup() {
       <p class="small muted" id="formStatus" style="margin:8px 0 0">${esc(S.formStatus || '')}</p>` : ''}
     <p class="note">Only works for an account that has Google Sheets connected in Claude (the owner's).</p></div>
   ${backupPanel()}
+  ${catalogPanel()}
   <div class="panel"><div class="spread"><h2>Change log</h2><button type="button" class="btn" data-act="log">Open the log</button></div><p class="note">Every edit, delete, return, payment, stock change and cash-up is written down with who did it and when.${OWN() ? ' Deleted sales can be put back from the log.' : ''}</p></div>
   <div class="panel"><h2>Who can do what</h2><p class="note">Only the owner can change prices, markups, items and shipments. Editors (like ${esc(SELLER())}) record sales, payments, returns, expenses, stock changes and cash-ups. Anyone with view access can only look.${S.isOwner ? ' You are the owner.' : ''}</p></div>
   </section>`;
@@ -1474,6 +1483,48 @@ function restoreSheet() {
       } catch (err) { box.innerHTML = `<div class="alert bad"><b class="i">!</b><div>Could not read the file: ${esc((err && err.message) || 'unknown problem')}</div></div>`; }
     });
   });
+}
+/* Public catalogue (Google stores and the installable app only): anyone with the link sees the products
+   for sale (photo, name, sizes, asking and target price, pieces left). The owner's and sellers' phones keep
+   the list "catalog/main" up to date; the store's server shows only that list, never costs or customers. */
+const HOST = () => window.SHOPBOOK_SERVER || null;
+const catOn = () => !!(ST().catalog && ST().catalog.on);
+const catLink = () => (HOST() && HOST().catalogueUrl) || (ST().catalog && ST().catalog.url) || '';
+function catalogPanel() {
+  if (!HOST()) return '';
+  const on = catOn(), link = catLink(), c = S.catalog;
+  const when = c && c.at ? new Date(c.at).toLocaleString('en-GB', { timeZone: TZ, day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+  return `<div class="panel"><div class="spread"><h2>Public catalogue</h2><span class="pill ${on ? 'ok' : ''}">${on ? 'On' : 'Off'}</span></div>
+    <p class="note">A page anyone can open with the link, no PIN: the products for sale with photo, name, sizes, <b>asking price</b>, <b>target price</b> and <b>pieces left</b>. It never shows costs, lowest prices, customers or money totals.</p>
+    ${on && link ? `<p style="margin:8px 0 0;overflow-wrap:anywhere">Link: <a href="${esc(link)}" target="_blank" rel="noopener"><b>${esc(link)}</b></a></p>
+      <div class="fgrid" style="margin-top:8px"><button type="button" class="btn" data-act="catCopy">Copy the link</button><a class="btn" href="https://wa.me/?text=${encodeURIComponent(BIZ() + ': see what we have in stock ' + link)}" target="_blank" rel="noopener">Share on WhatsApp</a></div>` : ''}
+    ${on && !link ? '<p class="note">Open the Shop Book app (the installed one) to see and copy the link.</p>' : ''}
+    ${on ? `<p class="small muted" style="margin:8px 0 0">${c ? `Last updated ${esc(when)} · ${(c.items || []).length} products` : 'Being prepared…'}. It updates by itself whenever you or ${esc(SELLER())} open the Shop Book.</p>` : ''}
+    ${OWN() ? `<div class="fgrid" style="margin-top:10px"><button type="button" class="btn ${on ? 'ghost' : 'primary'}" data-act="catToggle">${on ? 'Turn the catalogue off' : 'Turn the catalogue on'}</button></div>` : ''}</div>`;
+}
+function catalogBody() {
+  const items = [];
+  S.ships.filter(sh => sh.status === 'Selling' && !/sample shipment \(for testing\)/i.test(sh.name || '')).forEach(sh => {
+    calcShip(sh).items.filter(r => r.forSale && r.left > 0).forEach(r => items.push({ id: r.id, code: String(r.code || ''), name: String(r.name || ''), group: String(r.group || ''), sizes: String(r.sizes || ''), ask: num(r.ask), target: num(r.target), left: num(r.left) }));
+  });
+  items.sort((a, b) => a.group.localeCompare(b.group) || a.code.localeCompare(b.code));
+  const st = ST();
+  return { business: BIZ(), town: String(st.town || ''), phone: String(st.phone || ''), address: String(st.address || ''), items };
+}
+const catKey = c => JSON.stringify({ business: c.business, town: c.town, phone: c.phone, address: c.address, items: c.items });
+let catTimer = 0, catBusy = false;
+function catalogTick() {
+  if (!HOST() || !S.db || !S.canWrite || !catOn()) return;
+  if (!['settings', 'ships', 'items', 'sales', 'adjustments', 'catalog'].every(k => S.got[k])) return;
+  clearTimeout(catTimer); catTimer = setTimeout(publishCatalog, 3000);
+}
+async function publishCatalog() {
+  if (catBusy || !catOn() || !S.canWrite) return;
+  const body = catalogBody();
+  if (S.catalog && catKey(S.catalog) === catKey(body)) return;
+  catBusy = true;
+  try { await S.db.doc('catalog/main').set({ ...body, at: new Date().toISOString() }); } catch (e) { /* tried again on the next change */ }
+  catBusy = false;
 }
 function backupPanel() {
   const b = S.meta.backup; const days = b && b.at ? Math.floor((Date.now() - new Date(b.at).getTime()) / 86400000) : null;
@@ -2766,6 +2817,8 @@ document.addEventListener('click', e => {
   else if (a === 'count') countSheet();
   else if (a === 'log') logSheet();
   else if (a === 'bkFile') downloadBackup(t);
+  else if (a === 'catToggle') { const on = !catOn(); saveSettings({ catalog: { on, url: catLink() } }).then(ok => { if (!ok) return; logEvent(on ? 'Catalogue on' : 'Catalogue off', 'settings', on ? 'Public catalogue switched on' : 'Public catalogue switched off'); toast(on ? 'The catalogue is on' : 'The catalogue is off'); }); }
+  else if (a === 'catCopy') { Promise.resolve().then(() => navigator.clipboard.writeText(catLink())).then(() => toast('Link copied'), () => toast('Could not copy. Press on the link to copy it.')); }
   else if (a === 'bkSheet') backupToSheet(t);
   else if (a === 'bkRestore') restoreSheet();
   else if (a === 'formSetup') formSetupSheet();
@@ -2828,6 +2881,7 @@ render();
   const coll = (name, key) => db.collection(name).onSnapshot(q => { S[key] = q.docs.map(d => ({ ...d.data(), id: d.id })); S.got[key] = true; schedule(); }, onErr);
   coll('shipments', 'ships'); coll('items', 'items'); coll('sales', 'sales'); coll('expenses', 'expenses'); coll('customers', 'customers'); coll('adjustments', 'adjustments'); coll('cashups', 'cashups'); coll('counts', 'counts'); coll('log', 'log');
   db.doc('meta/backup').onSnapshot(s => { S.meta.backup = s.exists ? s.data() : null; schedule(); }, onErr);
+  if (HOST()) db.doc('catalog/main').onSnapshot(s => { S.catalog = s.exists ? s.data() : null; S.got.catalog = true; schedule(); }, onErr);
   render();
 })();
 })();
