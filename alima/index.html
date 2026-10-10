@@ -964,7 +964,7 @@ function openSheet(title, body, onMount) {
   const f = $('input,select,textarea', sh); if (f && window.innerWidth > 760) f.focus();
 }
 function closeSheet() { $('#sheetRoot').innerHTML = ''; }
-function toast(msg) { const t = $('#toastRoot'); t.innerHTML = `<div class="toast" role="status">${esc(msg)}</div>`; clearTimeout(toast.h); toast.h = setTimeout(() => t.innerHTML = '', 2600); }
+function toast(msg, ms) { const t = $('#toastRoot'); t.innerHTML = `<div class="toast" role="status">${esc(msg)}</div>`; clearTimeout(toast.h); toast.h = setTimeout(() => t.innerHTML = '', ms || 2600); }
 function errMsg(e) {
   const code = e && e.code;
   if (code === 'quota_exceeded') return 'Storage is full. Download old records and delete some before adding more.';
@@ -1041,6 +1041,9 @@ function saleSheet(itemId, saleId) {
       if (q < 1) return toast('Enter how many pieces were sold.');
       if (p <= 0) return toast('Enter the price per piece.');
       if (d >= q * p) return toast('The discount is bigger than the price.');
+      // never more than the stock shows (an edit may keep or lower its own pieces)
+      const inStock = r.left + (ex ? num(ex.qty) : 0);
+      if (q > inStock && !(ex && q <= num(ex.qty))) return toast(inStock > 0 ? `Only ${inStock} in stock. If you really have more, ask the owner to correct the stock.` : `${r.name} is sold out. If you really have more, ask the owner to correct the stock.`, 6000);
       const name = $('#sCust', sh).value.trim(), phone = $('#sPhone', sh).value.trim();
       if (ps.mode === 'Credit' && !name) return toast('Write the customer name for a credit sale.');
       const below = t / q < r.lowest;
@@ -2061,9 +2064,7 @@ function parseFormRows(values, itemVals) {
     sub.total = sum(lines, l => l.qty * l.price);
     out.push(sub);
   });
-  const used = {};
-  out.filter(s => !s.done && !s.errors.length).forEach(s => s.lines.forEach(l => { if (!l.r || l.done) return; used[l.r.id] = (used[l.r.id] || 0) + l.qty;
-    if (used[l.r.id] > l.r.left) s.errors.push(`${l.r.name}: only ${l.r.left} left in the Shop Book.`); }));
+  // stock is checked when importing (formImportSheet: a sale that needs too much is held back without using up stock)
   return out;
 }
 function formImportSheet() {
@@ -2079,19 +2080,34 @@ function formImportSheet() {
     const fresh = subs.filter(s => !s.done);
     setFormStatus(`Checked ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${subs.length} form entr${subs.length === 1 ? 'y' : 'ies'}, ${fresh.length} new.`);
     if (!fresh.length) { body.innerHTML = `<p style="margin:0"><b>No new form sales.</b></p><p class="note" style="margin:0">${subs.length ? `All ${subs.length} form entries are already in the Shop Book.` : 'The form has no answers yet.'}</p>`; return; }
+    // a form sale that needs more pieces than the stock shows is held back (whole sale), in the order the sales were sent
+    const leftNow = () => { const m = {}; S.ships.forEach(x => calcShip(x).items.forEach(r => { m[r.id] = r.left; })); return m; };
+    const holdCheck = list => { const m = leftNow(), out = new Map();
+      list.forEach(s => { if (s.errors.length) return; const need = {};
+        s.lines.filter(l => !l.done && l.r).forEach(l => { need[l.r.id] = (need[l.r.id] || 0) + l.qty; });
+        const short = Object.keys(need).filter(id => need[id] > (m[id] || 0));
+        if (short.length) out.set(s, short.map(id => { const l = s.lines.find(x => x.r && x.r.id === id); return `Only ${Math.max(0, m[id] || 0)} ${l.r.name} in stock; this sale needs ${need[id]}.`; }));
+        else Object.keys(need).forEach(id => { m[id] -= need[id]; }); });
+      return out; };
+    const held = holdCheck(fresh);
     const lineTxt = l => `${l.qty} × ${esc(l.r ? l.r.name : l.label)}${l.size ? ` <span class="muted">(${esc(l.size)})</span>` : ''} at ${D(l.price)}${l.done ? ' <span class="pill ok">already in</span>' : ''}`;
     body.innerHTML = `<p style="margin:0"><b>${fresh.length} new form sale${fresh.length === 1 ? '' : 's'}.</b> Check them, then tap Add.</p>
       ${fresh.map((s, i) => `<div class="panel" style="padding:12px;display:grid;gap:6px">
-        <label class="row" style="flex-wrap:nowrap;align-items:flex-start;font-weight:700"><input type="checkbox" data-fi="${i}" style="width:22px;min-height:22px;margin-top:2px" ${s.errors.length ? 'disabled' : 'checked'}>
+        <label class="row" style="flex-wrap:nowrap;align-items:flex-start;font-weight:700"><input type="checkbox" data-fi="${i}" style="width:22px;min-height:22px;margin-top:2px" ${s.errors.length || held.has(s) ? 'disabled' : 'checked'}>
           <span>${nice(s.date)} · ${esc(s.customer || 'No name')} · ${esc(s.payment)}${s.payment === 'Credit' ? ` (paid ${D(Math.min(s.paidNow, s.total))})` : ''}</span></label>
         <div class="small">${s.lines.map(lineTxt).join('<br>')}</div>
         <div class="spread small"><span class="muted">Sent ${esc(s.ts)} · sheet row ${s.row}</span><b>${D(s.total)}</b></div>
         ${s.errors.map(x => `<div class="alert bad small"><b class="i">!</b><div>${esc(x)} Fix it in the Google Sheet, then check again.</div></div>`).join('')}
+        ${(held.get(s) || []).map(x => `<div class="alert bad small"><b class="i">!</b><div>Held back: ${esc(x)} If you really have more, correct the stock first (Stock & prices → Stock change or Count stock), then check again.</div></div>`).join('')}
         ${s.warns.map(x => `<div class="alert warn small"><b class="i">!</b><div>${esc(x)}</div></div>`).join('')}</div>`).join('')}
       <button type="button" class="btn primary lg block" id="fiGo">Add to the Shop Book</button>`;
     $('#fiGo', sh).onclick = async () => {
-      const pick = fresh.filter((s, i) => $(`[data-fi="${i}"]`, sh).checked && !s.errors.length);
-      if (!pick.length) return toast('Nothing ticked.');
+      const ticked = fresh.filter((s, i) => $(`[data-fi="${i}"]`, sh).checked && !s.errors.length);
+      if (!ticked.length) return toast('Nothing ticked.');
+      // check the stock again with only the ticked sales (it may have changed since the list was shown)
+      const late = holdCheck(ticked), pick = ticked.filter(s => !late.has(s));
+      if (late.size) toast(`${late.size} sale${late.size === 1 ? '' : 's'} held back: not enough stock.`, 6000);
+      if (!pick.length) return;
       const btn = $('#fiGo', sh); btn.disabled = true; let n = 0; const extraNos = []; const t0 = Date.now();
       for (const s of pick) {
         const prior = S.sales.find(x => x.formKey && x.formKey.startsWith(s.key + '#'));
