@@ -379,7 +379,9 @@ function vHome() {
   const lastCount = S.counts.reduce((m, x) => x.date > m ? x.date : m, '');
   if (c.sales.length && (!lastCount || daysUntil(lastCount) < -31)) alerts.push(['info', 'i', lastCount ? `Stock last counted ${nice(lastCount)}. Time for a count: Stock & prices → Count stock.` : 'The stock has never been counted. Do a count: Stock & prices → Count stock.']);
   const lastCu = S.cashups.slice().sort((x, y) => String(y.date).localeCompare(String(x.date)))[0];
-  if (lastCu && num(lastCu.diff) < -0.5 && daysUntil(lastCu.date) >= -7) alerts.push(['bad', '!', `Day's money for ${nice(lastCu.date)} was short by ${D(-num(lastCu.diff))}${lastCu.note ? ' (' + esc(lastCu.note) + ')' : ''}.`]);
+  const lastCk = lastCu && daysUntil(lastCu.date) >= -7 ? cuCheck(lastCu) : null;
+  if (lastCk && lastCk.changed) alerts.push(['warn', '!', `Day's money for ${nice(lastCu.date)}: the sales or expenses of that day changed after it was closed${Math.abs(lastCk.diff) > 0.5 ? ` (now ${lastCk.diff < 0 ? 'short' : 'over'} by ${D(Math.abs(lastCk.diff))})` : ''}. Money → Day's money → choose that day → Count again.`]);
+  else if (lastCk && lastCk.diff < -0.5) alerts.push(['bad', '!', `Day's money for ${nice(lastCu.date)} was short by ${D(-lastCk.diff)}${lastCu.note ? ' (' + esc(lastCu.note) + ')' : ''}.`]);
   const no = ST().nextOrder, nd = nextOrderDates(no);
   if (nd) { const dl = daysUntil(nd.orderBy); if (dl != null && dl >= 0 && dl <= 30) alerts.push(['warn', '!', `${esc(no.festival || 'Next')} order must be placed by ${nice(nd.orderBy)} — ${dl} days left. Have the cash by ${nice(nd.cashBy)}.`]); }
   const best = c.items.filter(r => r.forSale).sort((a, b) => b.thru - a.thru || b.sold - a.sold).slice(0, 6);
@@ -1019,39 +1021,55 @@ function dayTotals(date) {
   rows.forEach(x => { const m = x.method; by[m] = by[m] || { inn: 0, out: 0 }; if (x.amount >= 0) by[m].inn += x.amount; else by[m].out -= x.amount; });
   return { rows, by, methods: Object.keys(by).sort((a, b) => PAY_METHODS.indexOf(a) - PAY_METHODS.indexOf(b)) };
 }
+// A closed day, checked against the records as they are NOW (sales or expenses of that day may have been
+// edited or deleted after it was closed). Only the ways of paying that were counted take part in the difference.
+function cuCheck(cu) {
+  const t = dayTotals(cu.date), now = {}; t.methods.forEach(m => now[m] = t.by[m].inn - t.by[m].out);
+  const counted = cu.counted || {}, then = cu.expected || {};
+  const methods = [...new Set([...t.methods, ...Object.keys(counted)])].sort((a, b) => PAY_METHODS.indexOf(a) - PAY_METHODS.indexOf(b));
+  const diff = Math.round(sum(Object.keys(counted), m => num(counted[m]) - num(now[m])));
+  const changed = methods.some(m => Math.abs(num(now[m]) - num(then[m])) > 0.5);
+  return { t, now, methods, diff, changed, was: num(cu.diff) };
+}
+const cuWord = d => Math.abs(d) <= 0.5 ? 'everything matched' : `${d < 0 ? 'short' : 'over'} by ${D(Math.abs(d))}`;
 function dayPanel() {
   const date = S.cashDate || today(); const t = dayTotals(date); const cu = S.cashups.find(x => x.date === date);
+  const ck = cu ? cuCheck(cu) : null; const methods = ck ? ck.methods : t.methods;
   const expTotal = m => t.by[m] ? t.by[m].inn - t.by[m].out : 0;
   const hist = S.cashups.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 8);
   return `<div class="panel"><div class="spread"><h2>Day's money</h2><input id="cashDate" type="date" value="${esc(date)}" style="max-width:170px" aria-label="Day"></div>
-    ${t.methods.length ? `<div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>Paid by</th><th class="n">In</th><th class="n">Out</th><th class="n">Should have</th>${cu ? '<th class="n">Counted</th><th class="n">Difference</th>' : ''}</tr></thead>
-      <tbody>${t.methods.map(m => { const exp = expTotal(m), cnt = cu && cu.counted ? cu.counted[m] : null; const df = cnt == null ? null : num(cnt) - exp;
-        return `<tr><td>${esc(m)}</td><td class="n">${D(t.by[m].inn)}</td><td class="n">${t.by[m].out ? D(t.by[m].out) : '–'}</td><td class="n"><b>${D(exp)}</b></td>${cu ? `<td class="n">${cnt == null ? '–' : D(cnt)}</td><td class="n" style="color:${df == null ? 'inherit' : Math.abs(df) <= 0.5 ? 'var(--target)' : 'var(--low)'}"><b>${df == null ? '–' : Math.abs(df) <= 0.5 ? 'OK' : (df > 0 ? '+' : '') + D(df)}</b></td>` : ''}</tr>`; }).join('')}</tbody></table></div>
-      <details style="margin-top:8px"><summary class="small">${t.rows.length} payment${t.rows.length === 1 ? '' : 's'} on this day</summary><div class="list">${t.rows.map(x => `<div class="li" style="grid-template-columns:1fr auto"><span class="small">${esc(x.method)} · ${esc(x.what)}</span><b class="small" style="color:${x.amount < 0 ? 'var(--low)' : 'inherit'}">${D(x.amount)}</b></div>`).join('')}</div></details>`
+    ${methods.length ? `<div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>Paid by</th><th class="n">In</th><th class="n">Out</th><th class="n">Should have</th>${cu ? '<th class="n">Counted</th><th class="n">Difference</th>' : ''}</tr></thead>
+      <tbody>${methods.map(m => { const b = t.by[m] || { inn: 0, out: 0 }, exp = expTotal(m), cnt = cu && cu.counted ? cu.counted[m] : null; const df = cnt == null ? null : num(cnt) - exp;
+        return `<tr><td>${esc(m)}</td><td class="n">${D(b.inn)}</td><td class="n">${b.out ? D(b.out) : '–'}</td><td class="n"><b>${D(exp)}</b></td>${cu ? `<td class="n">${cnt == null ? '–' : D(cnt)}</td><td class="n" style="color:${df == null ? 'inherit' : Math.abs(df) <= 0.5 ? 'var(--target)' : 'var(--low)'}">${df == null ? '–' : Math.abs(df) <= 0.5 ? 'OK' : (df > 0 ? '+' : '') + D(df)}</td>` : ''}</tr>`; }).join('')}</tbody></table></div>
+      ${t.rows.length ? `<details style="margin-top:8px"><summary class="small">${t.rows.length} payment${t.rows.length === 1 ? '' : 's'} on this day</summary><div class="list">${t.rows.map(x => `<div class="li" style="grid-template-columns:1fr auto"><span class="small">${esc(x.method)} · ${esc(x.what)}</span><b class="small" style="color:${x.amount < 0 ? 'var(--low)' : 'inherit'}">${D(x.amount)}</b></div>`).join('')}</div></details>` : '<p class="note">No money came in or went out on this day (any sales or expenses of this day were removed after it was closed).</p>'}`
       : '<p class="note">No money came in or went out on this day.</p>'}
-    ${cu ? `<p class="small" style="margin:8px 0 0">Closed by ${esc(whoName(cu.by))}${cu.note ? ' · ' + esc(cu.note) : ''}. ${Math.abs(num(cu.diff)) <= 0.5 ? '<span class="pill ok">Everything matches</span>' : `<span class="pill bad">${num(cu.diff) < 0 ? 'Short' : 'Over'} by ${D(Math.abs(num(cu.diff)))}</span>`}</p>` : ''}
-    ${S.canWrite && t.methods.length ? `<button type="button" class="btn ${cu ? '' : 'primary'} block" style="margin-top:10px" data-act="cashup">${cu ? 'Count again' : 'Count and close the day'}</button>` : ''}
+    ${cu ? `<p class="small" style="margin:8px 0 0">Closed by ${esc(whoName(cu.by))}${cu.note ? ' · ' + esc(cu.note) : ''}. ${Math.abs(ck.diff) <= 0.5 ? '<span class="pill ok">Everything matches</span>' : `<span class="pill bad">${ck.diff < 0 ? 'Short' : 'Over'} by ${D(Math.abs(ck.diff))}</span>`}</p>
+      ${ck.changed ? `<div class="alert warn small" style="margin-top:8px"><b class="i">!</b><span>The sales or expenses of this day changed after it was closed (when it was closed: ${cuWord(ck.was)}). The result above uses the records as they are now. Count again to close it with the right amounts.</span></div>` : ''}` : ''}
+    ${S.canWrite && (t.methods.length || cu) ? `<button type="button" class="btn ${cu ? '' : 'primary'} block" style="margin-top:10px" data-act="cashup">${cu ? 'Count again' : 'Count and close the day'}</button>` : ''}
+    ${cu && OWN() ? `<button type="button" class="btn ghost block" style="margin-top:8px" data-act="cashupDel">Remove this close</button><div id="cuDelBox" class="confirm" hidden><p style="margin:0 0 8px">Remove the close of ${esc(nice(date))}? The day's sales and expenses stay; only the count is removed (the change log keeps it).</p><button type="button" class="btn danger" data-act="cashupDelYes">Yes, remove it</button></div>` : ''}
     <p class="note">"Should have" assumes each day's money is set aside (or handed over) at the end of the day. Expenses are taken from the way they were paid (cash if not said).</p>
-    ${hist.length ? `<details><summary class="small">Last ${hist.length} closed days</summary><div class="list">${hist.map(h => `<div class="li" style="grid-template-columns:1fr auto"><span class="small">${nice(h.date)} · by ${esc(whoName(h.by))}${h.note ? ' · ' + esc(h.note) : ''}</span><b class="small" style="color:${Math.abs(num(h.diff)) <= 0.5 ? 'var(--target)' : 'var(--low)'}">${Math.abs(num(h.diff)) <= 0.5 ? 'OK' : (num(h.diff) > 0 ? '+' : '') + D(h.diff)}</b></div>`).join('')}</div></details>` : ''}
+    ${hist.length ? `<details><summary class="small">Last ${hist.length} closed days</summary><div class="list">${hist.map(h => { const k = cuCheck(h); return `<div class="li" style="grid-template-columns:1fr auto"><span class="small">${nice(h.date)} · by ${esc(whoName(h.by))}${h.note ? ' · ' + esc(h.note) : ''}${k.changed ? ' · <b>changed after closing</b>' : ''}</span><b class="small" style="color:${Math.abs(k.diff) <= 0.5 ? 'var(--target)' : 'var(--low)'}">${Math.abs(k.diff) <= 0.5 ? 'OK' : (k.diff > 0 ? '+' : '−') + D(Math.abs(k.diff))}</b></div>`; }).join('')}</div></details>` : ''}
   </div>`;
 }
 function cashupSheet() {
   const date = S.cashDate || today(); const t = dayTotals(date); const prev = S.cashups.find(x => x.date === date);
-  const exp = {}; t.methods.forEach(m => exp[m] = t.by[m].inn - t.by[m].out);
+  const methods = [...new Set([...t.methods, ...Object.keys((prev && prev.counted) || {})])].sort((a, b) => PAY_METHODS.indexOf(a) - PAY_METHODS.indexOf(b));
+  const exp = {}; methods.forEach(m => exp[m] = t.by[m] ? t.by[m].inn - t.by[m].out : 0);
   openSheet('Close the day: ' + nice(date), `<p class="note" style="margin:0">Count the cash in hand, and check what came in on Wave, QMoney and the others for this day only.</p>
-    <form id="cuF" class="list" style="gap:12px">${t.methods.map(m => `<label class="f">${esc(m)}: should be ${D(exp[m])}<input data-cu="${esc(m)}" inputmode="decimal" value="${prev && prev.counted && prev.counted[m] != null ? esc(prev.counted[m]) : ''}" placeholder="${m === 'Cash' ? 'cash counted' : 'amount received'}"></label>`).join('')}
+    <form id="cuF" class="list" style="gap:12px">${methods.map(m => `<label class="f">${esc(m)}: should be ${D(exp[m])}${exp[m] < -0.5 ? `<span class="h">More was paid out than came in on this day. Write what is really in hand (0 if nothing) and say in the note where the money for the payments came from (own pocket, from the owner…).</span>` : ''}<input data-cu="${esc(m)}" inputmode="decimal" value="${prev && prev.counted && prev.counted[m] != null ? esc(prev.counted[m]) : ''}" placeholder="${m === 'Cash' ? 'cash counted' : 'amount received'}"></label>`).join('')}
     <div id="cuH" class="alert info small"></div>
     <label class="f">Note <span class="h">optional</span><input id="cuN" value="${esc(prev ? prev.note || '' : '')}" placeholder="e.g. D200 given to the owner, gave change from my pocket"></label>
     <button class="btn primary lg block" type="submit" id="cuS">Save and close the day</button></form>`, sh => {
     const read = () => { const o = {}; $$('[data-cu]', sh).forEach(el => { if (el.value.trim() !== '') o[el.dataset.cu] = num(el.value); }); return o; };
     const upd = () => { const c = read(); const ms = Object.keys(c); const df = sum(ms, m => c[m] - exp[m]);
-      $('#cuH', sh).innerHTML = `<b class="i">i</b><div>${ms.length ? (Math.abs(df) <= 0.5 ? 'Everything you counted matches.' : `${df < 0 ? 'Short' : 'Over'} by <b>${D(Math.abs(df))}</b>. ${ms.filter(m => Math.abs(c[m] - exp[m]) > 0.5).map(m => `${esc(m)} ${c[m] - exp[m] > 0 ? '+' : ''}${D(c[m] - exp[m])}`).join(', ')}`) : 'Write what you counted.'}</div>`; };
+      $('#cuH', sh).innerHTML = `<b class="i">i</b><div>${ms.some(m => c[m] < 0) ? 'An amount counted cannot be below 0.' : ms.length ? (Math.abs(df) <= 0.5 ? 'Everything you counted matches.' : `${df < 0 ? 'Short' : 'Over'} by <b>${D(Math.abs(df))}</b>. ${ms.filter(m => Math.abs(c[m] - exp[m]) > 0.5).map(m => `${esc(m)} ${c[m] - exp[m] > 0 ? '+' : ''}${D(c[m] - exp[m])}`).join(', ')}`) : 'Write what you counted for each way of paying.'}</div>`; };
     sh.addEventListener('input', upd); upd();
     $('#cuF', sh).addEventListener('submit', async e => { e.preventDefault(); const c = read(); if (!Object.keys(c).length) return toast('Write at least one amount.');
+      if (Object.values(c).some(v => v < 0)) return toast('An amount counted cannot be below 0. Write what is really in hand, and explain in the note.', 6000);
       const diff = sum(Object.keys(c), m => c[m] - exp[m]); $('#cuS', sh).disabled = true;
       const d = { date, expected: exp, counted: c, diff: Math.round(diff), note: $('#cuN', sh).value.trim(), by: S.uid || '', at: new Date().toISOString() };
       if (await write(() => S.db.doc('cashups/d-' + date).set(d), Math.abs(diff) <= 0.5 ? 'Day closed: everything matches' : `Day closed: ${diff < 0 ? 'short' : 'over'} by ${D(Math.abs(diff))}`)) {
-        logEvent('Closed the day', date, `${nice(date)}: ${Math.abs(diff) <= 0.5 ? 'matches' : (diff < 0 ? 'short ' : 'over ') + D(Math.abs(diff))}`); closeSheet(); } else $('#cuS', sh).disabled = false; });
+        logEvent('Closed the day', date, `${nice(date)}: ${Math.abs(diff) <= 0.5 ? 'matches' : (diff < 0 ? 'short ' : 'over ') + D(Math.abs(diff))}${prev ? ' (counted again; before: ' + cuWord(num(prev.diff)) + ')' : ''}`, prev || undefined); closeSheet(); } else $('#cuS', sh).disabled = false; });
   });
 }
 
@@ -2605,6 +2623,8 @@ document.addEventListener('click', e => {
   else if (a === 'cust') custSheet(id);
   else if (a === 'month') monthSheet(id);
   else if (a === 'cashup') cashupSheet();
+  else if (a === 'cashupDel') { const bx = $('#cuDelBox'); if (bx) bx.hidden = false; }
+  else if (a === 'cashupDelYes') { const date = S.cashDate || today(), cu = S.cashups.find(x => x.date === date); if (cu && OWN()) write(() => S.db.doc('cashups/' + (cu.id || 'd-' + date)).delete(), 'Close removed').then(ok => { if (ok) logEvent('Removed a close', date, `${nice(date)} (was ${cuWord(num(cu.diff))})`, cu); }); }
   else if (a === 'count') countSheet();
   else if (a === 'log') logSheet();
   else if (a === 'bkFile') downloadBackup(t);
