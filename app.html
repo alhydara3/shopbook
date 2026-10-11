@@ -75,6 +75,10 @@ a.btn{text-decoration:none}
 .chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:14px;cursor:pointer;white-space:nowrap}
 .chip[aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
 .chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+.cpl{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+.cpl .cp{position:relative;width:84px;height:84px;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--surface)}
+.cpl .cp img{width:100%;height:100%;object-fit:cover;display:block}
+.cpl .cp button{position:absolute;top:3px;right:3px;width:28px;height:28px;min-height:28px;padding:0;border-radius:999px;border:0;background:rgba(10,18,30,.75);color:#fff;font-weight:700;cursor:pointer}
 .idesc{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.45;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0}
 .pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700;background:var(--brand-soft);color:var(--ask)}
 .pill.ok{background:var(--target-soft);color:var(--target)}
@@ -130,7 +134,8 @@ th{background:var(--surface-2);font-size:12px;text-transform:uppercase;letter-sp
 td.n,th.n{text-align:right}
 tr:last-child td{border-bottom:0}
 label.f{display:grid;gap:5px;font-size:14px;font-weight:700;min-width:0}
-label.f span.h{font-weight:400;color:var(--muted);font-size:13px}
+label.f span.h,div.f span.h{font-weight:400;color:var(--muted);font-size:13px}
+div.f.cpbox{display:grid;gap:5px;font-size:14px;min-width:0}div.f.cpbox>b{font-weight:700}
 input,select,textarea{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface);min-height:44px;width:100%;min-width:0}
 input:focus,select:focus,textarea:focus{outline:3px solid color-mix(in srgb,var(--link) 45%,transparent);border-color:var(--link)}
 .fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
@@ -1223,7 +1228,7 @@ function catalogPanel() {
   const on = catOn(), link = catLink(), c = S.catalog;
   const when = c && c.at ? new Date(c.at).toLocaleString('en-GB', { timeZone: TZ, day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
   return `<div class="panel"><div class="spread"><h2>Public catalogue</h2><span class="pill ${on ? 'ok' : ''}">${on ? 'On' : 'Off'}</span></div>
-    <p class="note">A page anyone can open with the link, no PIN: the products for sale with photo, name, sizes, details for buyers, <b>one price</b> (your target price) and <b>${esc(catLeftText())}</b>. It never shows asking prices, lowest prices, costs, customers or money totals.</p>
+    <p class="note">A page anyone can open with the link, no PIN: the products for sale (except items you untick in Edit item) with photo, name, <b>one price</b> (your target price) and <b>${esc(catLeftText())}</b>; sizes, details for buyers and catalogue photos behind a Details button. It never shows asking prices, lowest prices, costs, customers or money totals.</p>
     ${on && link ? `<p style="margin:8px 0 0;overflow-wrap:anywhere">Link: <a href="${esc(link)}" target="_blank" rel="noopener"><b>${esc(link)}</b></a></p>
       <div class="fgrid" style="margin-top:8px"><button type="button" class="btn" data-act="catCopy">Copy the link</button><a class="btn" href="https://wa.me/?text=${encodeURIComponent(BIZ() + ': see what we have in stock ' + link)}" target="_blank" rel="noopener">Share on WhatsApp</a></div>` : ''}
     ${on && !link ? '<p class="note">Open the Shop Book app (the installed one) to see and copy the link.</p>' : ''}
@@ -1233,7 +1238,7 @@ function catalogPanel() {
 function catalogBody() {
   const items = [];
   S.ships.filter(sh => sh.status === 'Selling' && !/sample shipment \(for testing\)/i.test(sh.name || '')).forEach(sh => {
-    calcShip(sh).items.filter(r => r.forSale && r.left > 0).forEach(r => items.push({ id: r.id, code: String(r.code || ''), name: String(r.name || ''), group: String(r.group || ''), sizes: String(r.sizes || ''), price: num(r.target), left: num(r.left) }));
+    calcShip(sh).items.filter(r => r.forSale && r.left > 0 && r.catHide !== true).forEach(r => items.push({ id: r.id, code: String(r.code || ''), name: String(r.name || ''), group: String(r.group || ''), sizes: String(r.sizes || ''), price: num(r.target), left: num(r.left) }));
   });
   items.sort((a, b) => a.group.localeCompare(b.group) || a.code.localeCompare(b.code));
   const st = ST();
@@ -1841,7 +1846,7 @@ function itemSheet(itemId) {
   const info = it && it.forSale ? OWN() ? `${priceTrio(it)}<div class="kv small"><span>China price</span><b>${num(it.rmb)} RMB</b><span>Landed cost (used for target)</span><b>${D(it.landed)}</b><span>Own cost (used for lowest)</span><b>${D(it.own)}</b><span>Lowest = own cost + (${it.flSrc === 'item' ? 'this item' : it.flSrc === 'group' ? esc(it.group) : 'general'})</span><b>${P(it.fl)}</b><span>Markup (${it.mkSrc === 'item' ? 'this item' : esc(it.group)})</span><b>${P(it.mk)}</b>${num(it.finalPrice) > 0 ? `<span>Target from markup (not used: own selling price ${D(it.finalPrice)} is set)</span><b>${D(it.mkTarget)}</b>` : ''}<span>Sold / bought</span><b>${it.sold} / ${it.qty}</b></div>` : `${priceTrio(it)}<div class="kv small"><span>Sold / bought</span><b>${it.sold} / ${it.qty}</b></div>` : '';
   const ro = !OWN();
   const adjs = it ? S.adjustments.filter(a => a.itemId === it.id).sort((a, b) => String(b.date).localeCompare(String(a.date))) : [];
-  openSheet(it ? it.name : 'Add item', `${it ? `<div class="row" style="flex-wrap:nowrap">${img(it, 'thumb lg')}<div class="small muted">${esc(it.code)} · ${esc(it.group)}${it.sizes ? '<br>' + esc(it.sizes) : ''}</div></div>${it.desc ? `<div><h3 style="margin:0 0 4px">Details for buyers</h3><p class="idesc">${esc(it.desc)}</p></div>` : ''}` : ''}${info}
+  openSheet(it ? it.name : 'Add item', `${it ? `<div class="row" style="flex-wrap:nowrap">${img(it, 'thumb lg')}<div class="small muted">${esc(it.code)} · ${esc(it.group)}${it.sizes ? '<br>' + esc(it.sizes) : ''}</div></div>${it.catHide === true && it.forSale ? '<p class="small" style="margin:0"><span class="pill">Not in the public catalogue</span></p>' : ''}${it.desc ? `<div><h3 style="margin:0 0 4px">Details for buyers</h3><p class="idesc">${esc(it.desc)}</p></div>` : ''}` : ''}${info}
     ${it && it.forSale && S.canWrite ? `<button type="button" class="btn block" id="iAdj">Damaged, lost, given away or found? Record a stock change</button>` : ''}
     ${ro && S.canWrite ? '<p class="note" style="margin:0">Only the owner can change prices and item details.</p>' : ''}
     ${ro ? '' : `<form id="itF" class="list" style="gap:12px">
@@ -1856,7 +1861,10 @@ function itemSheet(itemId) {
       <label class="f">Markup (%) <span class="h">optional, only for this item; empty = use the group's ${P(grpMk(v.group))}</span><input id="iMk" inputmode="decimal" value="${hasPct(v.markupPct) ? +(num(v.markupPct) * 100).toFixed(2) : ''}" placeholder="${Math.round(grpMk(v.group) * 100)}"></label>
       <label class="f">Lowest = own cost + (%) <span class="h">optional, only for this item; empty = use the group's ${P(floorFor({ group: v.group }, st)[0])}</span><input id="iFloor" inputmode="decimal" value="${hasPct(v.floorPct) ? Math.round(num(v.floorPct) * 100) : ''}" placeholder="${Math.round(floorFor({ group: v.group }, st)[0] * 100)}"></label>
       <label class="row" style="flex-wrap:nowrap"><input type="checkbox" id="iSale" style="width:22px;min-height:22px" ${v.forSale !== false ? 'checked' : ''}> For sale (untick for shop equipment like mannequins)</label>
-      <label class="f">Photo <span class="h">optional</span><input id="iPhoto" type="file" accept="image/*"></label>
+      ${HOST() ? `<label class="row" style="flex-wrap:nowrap"><input type="checkbox" id="iCat" style="width:22px;min-height:22px" ${v.catHide !== true ? 'checked' : ''}> Show in the public catalogue (untick to keep this item off the catalogue)</label>` : ''}
+      <label class="f">Photo <span class="h">optional, the small photo used everywhere in the Shop Book</span><input id="iPhoto" type="file" accept="image/*"></label>
+      ${HOST() ? `<div class="f cpbox"><b>Catalogue photos</b><span class="h">optional, up to ${CP_MAX} bigger photos shown only in the public catalogue (Details). Needs internet.</span>
+        ${HOST().photos ? `<div id="cpList" class="cpl"><span class="small muted">${it ? 'Loading…' : 'None yet.'}</span></div><input id="cpAdd" type="file" accept="image/*" multiple>` : '<p class="note" style="margin:4px 0 0">Add them from the installed Shop Book app (this web app needs its Index.html updated first).</p>'}</div>` : ''}
       <button class="btn primary lg block" type="submit">${it ? 'Save item' : 'Add item'}</button>
       ${it ? `<button type="button" class="btn danger block" id="iDel">Delete item</button><div id="iDelBox" class="confirm" hidden><p style="margin:0 0 8px">Delete this item for good?</p><button type="button" class="btn danger" id="iDelYes">Yes, delete</button></div>` : ''}
     </form>`}
@@ -1867,6 +1875,20 @@ function itemSheet(itemId) {
     const f = $('#itF', sh); if (!f) return;
     let photo = v.photo || '';
     $('#iPhoto', sh).addEventListener('change', async e => { const file = e.target.files[0]; if (!file) return; try { photo = await shrink(file); toast('Photo ready'); } catch { toast('Could not read that photo.'); } });
+    // catalogue photos: loaded from the server when the item opens; saved (before the item) only if changed
+    let cp = [], cpOk = !it, cpChanged = false, cpSaved = false;
+    const cpList = $('#cpList', sh), cpAdd = $('#cpAdd', sh);
+    const cpDraw = () => { if (!cpList) return;
+      cpList.innerHTML = !cpOk ? '<span class="small muted">Could not load the catalogue photos (no internet?). They stay as they are; open the item again with internet to change them.</span>'
+        : cp.length ? cp.map((src, k) => `<div class="cp"><img src="${esc(src)}" alt="Catalogue photo ${k + 1}"><button type="button" data-cprm="${k}" aria-label="Remove photo ${k + 1}">×</button></div>`).join('') : '<span class="small muted">None yet.</span>';
+      if (cpAdd) cpAdd.disabled = !cpOk || cp.length >= CP_MAX; };
+    if (cpList && it) HOST().photos('get', it.id).then(l => { cp = Array.isArray(l) ? l : []; cpOk = true; cpDraw(); }, () => { cpOk = false; cpDraw(); }); else cpDraw();
+    if (cpAdd) cpAdd.addEventListener('change', async e => {
+      const files = Array.from(e.target.files || []).slice(0, CP_MAX - cp.length); e.target.value = '';
+      for (const file of files) { try { cp.push(await bigPhoto(file)); cpChanged = true; } catch { toast('Could not read that photo.'); } }
+      if (files.length) toast(cp.length >= CP_MAX ? `${CP_MAX} catalogue photos: that is the most` : 'Photo ready'); cpDraw();
+    });
+    if (cpList) cpList.addEventListener('click', e => { const b = e.target.closest('[data-cprm]'); if (!b) return; cp.splice(+b.dataset.cprm, 1); cpChanged = true; cpDraw(); });
     $('#iGroup', sh).addEventListener('change', e => { const nw = e.target.value === '__new__'; $('#iNewG', sh).hidden = !nw; if (nw) $('#iNgName', sh).focus(); });
     f.addEventListener('submit', async e => {
       e.preventDefault();
@@ -1883,18 +1905,37 @@ function itemSheet(itemId) {
         market: num($('#iMkt', sh).value) || null, finalPrice: num($('#iFinal', sh).value) || null, floorPct: String($('#iFloor', sh).value).trim() === '' ? null : num($('#iFloor', sh).value) / 100,
         markupPct: String($('#iMk', sh).value).trim() === '' ? null : num($('#iMk', sh).value) / 100,
         desc: String($('#iDesc', sh).value).replace(/\r\n?/g, '\n').trim().slice(0, 1000) };
+      if ($('#iCat', sh)) d.catHide = !$('#iCat', sh).checked; else if (it && it.catHide) d.catHide = it.catHide;
       if (it && it.note) d.note = it.note;
       if (d.markupPct != null && !(d.markupPct >= 0)) return toast('Write the markup as a number, e.g. 60.');
       if (!d.name) return toast('Give the item a name.');
       if (!d.code) return toast('Give the item a short code, e.g. SHO-008.');
       const id = it ? it.id : (d.ship + '-' + d.code.replace(/[^A-Za-z0-9_\-.~:@+]/g, '-'));
       if (!it && S.items.some(i => i.id === id)) return toast('That code is already used in this shipment.');
-      const ok = await write(() => S.db.doc('items/' + id).set(d), it ? 'Item saved' : 'Item added'); if (ok) logEvent(it ? 'Changed an item' : 'Added an item', id, `${d.code} ${d.name}${it && String(it.desc || '') !== d.desc ? ' · details ' + (d.desc ? 'changed' : 'removed') : !it && d.desc ? ' · with details' : ''}${it && num(it.finalPrice) !== num(d.finalPrice) ? ` · own price ${d.finalPrice ? D(d.finalPrice) : 'removed'}` : ''}${it && String(it.markupPct ?? '') !== String(d.markupPct ?? '') ? ` · markup ${d.markupPct == null ? 'back to group %' : Math.round(d.markupPct * 100) + '%'}` : ''}${it && String(it.floorPct ?? '') !== String(d.floorPct ?? '') ? ` · lowest ${d.floorPct == null ? 'back to group %' : '+' + Math.round(d.floorPct * 100) + '%'}` : ''}`);
+      if (cpChanged) {   // photos first: if there is no internet, nothing is saved and the form stays open
+        const btn = $('#itF button[type=submit]', sh); btn.disabled = true; btn.textContent = 'Saving the catalogue photos…';
+        try { await HOST().photos('save', id, cp); cpChanged = false; cpSaved = true; }
+        catch (err) { btn.disabled = false; btn.textContent = it ? 'Save item' : 'Add item'; return toast('The catalogue photos could not be saved' + (err && err.code === 'unavailable' ? ' (no internet)' : '') + '. Nothing was changed. Try again with internet.', 6000); }
+        btn.disabled = false; btn.textContent = it ? 'Save item' : 'Add item';
+      }
+      const ok = await write(() => S.db.doc('items/' + id).set(d), it ? 'Item saved' : 'Item added'); if (ok) logEvent(it ? 'Changed an item' : 'Added an item', id, `${d.code} ${d.name}${it && String(it.desc || '') !== d.desc ? ' · details ' + (d.desc ? 'changed' : 'removed') : !it && d.desc ? ' · with details' : ''}${cpSaved ? ` · catalogue photos: ${cp.length}` : ''}${it && !!it.catHide !== !!d.catHide ? (d.catHide ? ' · taken off the catalogue' : ' · back on the catalogue') : !it && d.catHide ? ' · not in the catalogue' : ''}${it && num(it.finalPrice) !== num(d.finalPrice) ? ` · own price ${d.finalPrice ? D(d.finalPrice) : 'removed'}` : ''}${it && String(it.markupPct ?? '') !== String(d.markupPct ?? '') ? ` · markup ${d.markupPct == null ? 'back to group %' : Math.round(d.markupPct * 100) + '%'}` : ''}${it && String(it.floorPct ?? '') !== String(d.floorPct ?? '') ? ` · lowest ${d.floorPct == null ? 'back to group %' : '+' + Math.round(d.floorPct * 100) + '%'}` : ''}`);
       if (ok) closeSheet();
     });
     const del = $('#iDel', sh); if (del) del.onclick = () => { if (hist.length || S.adjustments.some(a => a.itemId === it.id)) purgeSheet(null, [it.id]); else $('#iDelBox', sh).hidden = false; };
-    sh.addEventListener('click', e => { if (e.target.id === 'iDelYes') write(() => S.db.doc('items/' + it.id).delete(), 'Item deleted').then(ok => { if (ok) { logEvent('Deleted an item', it.id, it.code + ' ' + it.name, it); closeSheet(); } }); });
+    sh.addEventListener('click', e => { if (e.target.id === 'iDelYes') { if (HOST() && HOST().photos) HOST().photos('save', it.id, []).catch(() => {}); } if (e.target.id === 'iDelYes') write(() => S.db.doc('items/' + it.id).delete(), 'Item deleted').then(ok => { if (ok) { logEvent('Deleted an item', it.id, it.code + ' ' + it.name, it); closeSheet(); } }); });
   });
+}
+const CP_MAX = 4;
+function bigPhoto(file) {   // long side at most 1000 px, not cropped; smaller again if the file is still big
+  return new Promise((res, rej) => { const fr = new FileReader(); fr.onerror = rej; fr.onload = () => { const im = new Image(); im.onerror = rej; im.onload = () => {
+    let out = '';
+    for (const [side, q] of [[1000, 0.68], [800, 0.62], [640, 0.55], [480, 0.5]]) {
+      const k = Math.min(1, side / Math.max(im.width, im.height)), cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(im.width * k)); cv.height = Math.max(1, Math.round(im.height * k));
+      cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height); out = cv.toDataURL('image/jpeg', q);
+      if (out.length <= 380000) break;
+    }
+    res(out); }; im.src = fr.result; }; fr.readAsDataURL(file); });
 }
 function shrink(file) {
   return new Promise((res, rej) => { const fr = new FileReader(); fr.onerror = rej; fr.onload = () => { const im = new Image(); im.onerror = rej; im.onload = () => {

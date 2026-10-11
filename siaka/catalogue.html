@@ -47,16 +47,28 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
 .msg{background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px;text-align:center;color:var(--muted)}
 .msg button{margin-top:12px;font:inherit;font-weight:700;border:0;border-radius:10px;background:var(--navy);color:#fff;padding:10px 18px;min-height:44px;cursor:pointer}
 .note{color:var(--muted);font-size:13px;margin-top:18px;text-align:center}
-.ds{font-size:13px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line}
-.more{font:inherit;font-size:14px;font-weight:700;border:1px solid var(--line);background:#fff;color:var(--navy);border-radius:10px;padding:6px 10px;min-height:38px;cursor:pointer;text-align:left}
+.more{font:inherit;font-size:14px;font-weight:700;border:1px solid var(--navy);background:#fff;color:var(--navy);border-radius:10px;padding:6px 10px;min-height:40px;cursor:pointer;width:100%}
+.more:hover{background:#e8edf6}
+.badge{position:absolute;right:8px;bottom:8px;background:rgba(10,18,30,.72);color:#fff;font-size:12px;font-weight:700;border-radius:999px;padding:3px 8px}
+.ph{position:relative}
+.gal{position:relative;background:#eef2f6;margin-top:-60px}
+.track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
+.track::-webkit-scrollbar{display:none}
+.slide{flex:0 0 100%;scroll-snap-align:center;display:flex;align-items:center;justify-content:center;height:min(60vh,520px)}
+.slide img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+.slide.wait{color:var(--muted);font-weight:700;font-size:14px}
+.gnav{position:absolute;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:999px;border:0;background:rgba(255,255,255,.88);color:var(--ink);font-size:20px;font-weight:700;cursor:pointer;display:none}
+.gnav.prev{left:8px}.gnav.next{right:8px}
+.gcount{position:absolute;right:10px;bottom:10px;background:rgba(10,18,30,.72);color:#fff;font-size:13px;font-weight:700;border-radius:999px;padding:3px 9px}
+@media (hover:hover){.gal.multi .gnav{display:block}}
+.dlg h3{font-size:14px;margin:4px 0 0;color:var(--muted);text-transform:none}
 .ph.tap{cursor:pointer}
 .ov{position:fixed;inset:0;z-index:20;background:rgba(10,18,30,.6);display:flex;align-items:flex-end;justify-content:center}
 .ov[hidden]{display:none}
 .dlg{background:#fff;width:100%;max-width:560px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:0 0 18px}
-.dlg .top{position:sticky;top:0;display:flex;justify-content:flex-end;padding:8px;background:linear-gradient(#fff,rgba(255,255,255,0))}
+.dlg .top{position:sticky;top:0;z-index:3;display:flex;justify-content:flex-end;padding:8px;pointer-events:none}
+.dlg .top .x{pointer-events:auto;box-shadow:0 1px 4px rgba(0,0,0,.25)}
 .dlg .x{font:inherit;font-weight:700;border:0;background:#eef2f6;color:var(--ink);border-radius:999px;min-width:44px;min-height:44px;cursor:pointer}
-.dlg .big{background:#eef2f6;margin-top:-60px}
-.dlg .big img{width:100%;max-height:60vh;object-fit:contain;display:block}
 .dlg .in{padding:14px 16px 0;display:grid;gap:10px}
 .dlg h2{font-family:"Bricolage Grotesque",system-ui,sans-serif;font-size:22px;line-height:1.15;margin:0;overflow-wrap:anywhere}
 .dlg .txt{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;margin:0}
@@ -116,9 +128,10 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
     $('out').innerHTML = '<div class="grid">' + list.map(function (x, i) {
       var ph = x.photo ? '<img src="' + esc(x.photo) + '" alt="' + esc(x.name) + '" loading="lazy">' : esc(x.code || '');
       var askLink = wa ? '<a class="ask" href="' + askUrl(x) + '" target="_blank" rel="noopener">Ask us</a>' : '';
-      return '<article class="card"><div class="ph' + (x.desc ? ' tap" data-i="' + i : '') + '">' + ph + '</div><div class="body"><div class="nm">' + esc(x.name) + '</div>' + (x.sizes ? '<div class="sz">' + esc(x.sizes) + '</div>' : '') +
-        (x.desc ? '<div class="ds">' + esc(x.desc) + '</div><button type="button" class="more" data-i="' + i + '">See details</button>' : '') +
+      var n = 1 + (Number(x.more) || 0);
+      return '<article class="card"><div class="ph tap" data-i="' + i + '">' + ph + (x.photo && n > 1 ? '<span class="badge">' + n + ' photos</span>' : '') + '</div><div class="body"><div class="nm">' + esc(x.name) + '</div>' +
         '<div class="pr"><div class="p-price"><div class="k">Price</div><div class="v">' + D(x.price) + '</div></div></div>' +
+        '<button type="button" class="more" data-i="' + i + '">Details</button>' +
         '<div class="foot"><span class="left">' + esc(leftText(x)) + '</span>' + askLink + '</div></div></article>';
     }).join('') + '</div>';
   }
@@ -133,23 +146,48 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
     return 'https://wa.me/' + waNum(data.phone) + '?text=' + encodeURIComponent('Hello ' + name + ', I am interested in ' + x.name + (x.code ? ' (' + x.code + ')' : '') + '.');
   }
   // the details of one product, over the list; the phone's Back button closes it
-  var opened = false, lastFocus = null;
+  var opened = false, lastFocus = null, extra = {}, showing = null;
+  var okPhoto = function (p) { return typeof p === 'string' && /^data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+\/=]+$/.test(p); };
   function openDetails(x) {
-    var wa = waNum(data.phone);
+    var wa = waNum(data.phone), more = Number(x.more) || 0; showing = x;
     $('dlg').innerHTML = '<div class="top"><button type="button" class="x" id="dlgX" aria-label="Close">✕</button></div>' +
-      (x.photo ? '<div class="big"><img src="' + esc(x.photo) + '" alt="' + esc(x.name) + '"></div>' : '') +
+      (x.photo || more ? '<div class="gal" id="gal"><div class="track" id="track"></div><button type="button" class="gnav prev" id="gPrev" aria-label="Previous photo">‹</button><button type="button" class="gnav next" id="gNext" aria-label="Next photo">›</button><span class="gcount" id="gCount" hidden></span></div>' : '') +
       '<div class="in"><h2 id="dlgT">' + esc(x.name) + '</h2>' +
-      '<div class="sz">' + esc([x.code, x.sizes].filter(Boolean).join(' · ')) + '</div>' +
+      (x.code ? '<div class="sz">' + esc(x.code) + '</div>' : '') +
       '<div class="pr"><div class="p-price"><div class="k">Price</div><div class="v">' + D(x.price) + '</div></div></div>' +
       '<div class="left">' + esc(leftText(x)) + '</div>' +
-      '<p class="txt">' + esc(x.desc || '') + '</p>' +
+      (x.sizes ? '<h3>Sizes / colours</h3><p class="txt">' + esc(x.sizes) + '</p>' : '') +
+      (x.desc ? '<h3>Details</h3><p class="txt">' + esc(x.desc) + '</p>' : '') +
       (wa ? '<a class="askbig" href="' + askUrl(x) + '" target="_blank" rel="noopener">Ask about this on WhatsApp</a>' : '') + '</div>';
+    drawGallery(x);
+    if (more && !extra[x.pid]) {
+      fetch(CFG.api, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'catalogPhotos', args: [x.pid] }), credentials: 'omit', cache: 'no-store' })
+        .then(function (r) { return r.text(); }).then(function (t) { var o = JSON.parse(t); if (!o || !o.ok) throw new Error('bad reply'); extra[x.pid] = (o.value || []).filter(okPhoto); })
+        .catch(function () { extra[x.pid] = null; })
+        .then(function () { if (showing === x) drawGallery(x); if (extra[x.pid] === null) delete extra[x.pid]; });
+    }
     lastFocus = document.activeElement; $('ov').hidden = false; document.body.style.overflow = 'hidden'; $('dlgX').focus();
     if (!opened) { opened = true; try { history.pushState({ details: 1 }, ''); } catch (e) {} }
   }
+  // the photos of one product: the main one, then the catalogue photos (swipe, or the arrows on a computer)
+  function drawGallery(x) {
+    var tr = $('track'); if (!tr) return;
+    var more = Number(x.more) || 0, got = extra[x.pid], list = (x.photo ? [x.photo] : []).concat(got || []);
+    var slides = list.map(function (src, k) { return '<div class="slide"><img src="' + esc(src) + '" alt="' + esc(x.name) + ' photo ' + (k + 1) + '"></div>'; });
+    if (more && got === undefined) slides.push('<div class="slide wait">Loading more photos…</div>');
+    if (more && got === null) slides.push('<div class="slide wait">More photos could not be loaded. Check the internet.</div>');
+    tr.innerHTML = slides.join('');
+    var n = tr.children.length, c = $('gCount');
+    $('gal').classList.toggle('multi', n > 1); c.hidden = n < 2;
+    var at = function () { return Math.round(tr.scrollLeft / Math.max(1, tr.clientWidth)); };
+    var upd = function () { c.textContent = Math.min(n, at() + 1) + ' / ' + n; };
+    tr.onscroll = upd; upd();
+    $('gPrev').onclick = function () { tr.scrollTo({ left: Math.max(0, at() - 1) * tr.clientWidth, behavior: 'smooth' }); };
+    $('gNext').onclick = function () { tr.scrollTo({ left: Math.min(n - 1, at() + 1) * tr.clientWidth, behavior: 'smooth' }); };
+  }
   function closeDetails(fromBack) {
     if ($('ov').hidden) return;
-    $('ov').hidden = true; $('dlg').innerHTML = ''; document.body.style.overflow = '';
+    $('ov').hidden = true; $('dlg').innerHTML = ''; document.body.style.overflow = ''; showing = null;
     if (opened) { opened = false; if (!fromBack) { try { history.back(); } catch (e) {} } }
     if (lastFocus && lastFocus.focus) lastFocus.focus();
   }
