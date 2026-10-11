@@ -19,6 +19,9 @@ header{background:var(--navy);color:#fff;padding:20px 16px 18px}
 header .in,main{max-width:960px;margin:0 auto}
 h1{font-family:"Bricolage Grotesque",system-ui,sans-serif;font-weight:800;font-size:28px;line-height:1.1;margin:0 0 4px;letter-spacing:-.01em}
 .sub{opacity:.85;font-size:14px}
+.brand{display:flex;align-items:center;gap:12px}.bt{min-width:0}
+#logo{flex:none;width:60px;height:60px;object-fit:contain;background:#fff;border-radius:14px;padding:4px;box-sizing:border-box}
+@media (min-width:640px){#logo{width:72px;height:72px}}
 .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .acts a{display:inline-flex;align-items:center;gap:6px;min-height:42px;padding:8px 14px;border-radius:999px;font-weight:700;text-decoration:none;font-size:15px}
 .wa{background:#fff;color:var(--navy)}.call{border:1px solid rgba(255,255,255,.5);color:#fff}
@@ -90,7 +93,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
 </style>
 </head>
 <body>
-<header><div class="in"><h1 id="nm">ALIMA'S STORE</h1><div class="sub" id="sub">Products in stock</div><div class="acts" id="acts"></div></div></header>
+<header><div class="in"><div class="brand"><img id="logo" alt="" hidden><div class="bt"><h1 id="nm">ALIMA'S STORE</h1><div class="sub" id="sub">Products in stock</div></div></div><div class="acts" id="acts"></div></div></header>
 <main>
   <div class="tools" id="tools" hidden><input type="search" id="q" placeholder="Search: name, size or code" aria-label="Search the products"><div class="chips" id="chips" role="group" aria-label="Groups"></div></div>
   <div class="count" id="count" aria-live="polite"></div>
@@ -117,6 +120,9 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
     data = v || {};
     var name = data.business || CFG.name || 'Our shop';
     $('nm').textContent = name; document.title = name + ' · Products';
+    // the shop's logo (the receipt logo), only a picture sent as data; otherwise no logo
+    var lg = typeof data.logo === 'string' && /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+\/=]+$/.test(data.logo) ? data.logo : '';
+    $('logo').hidden = !lg; if (lg) { $('logo').src = lg; $('logo').alt = name + ' logo'; var fi = document.querySelector('link[rel=icon]'); if (fi) fi.href = lg; } else $('logo').removeAttribute('src');
     if (typeof data.footer === 'string' && data.footer.trim()) $('foot').textContent = data.footer.trim().slice(0, 300);   // the owner's text; otherwise the standard sentence stays
     if (data.off) { $('tools').hidden = true; $('count').textContent = ''; $('out').innerHTML = '<div class="msg">This catalogue is closed right now.</div>'; return; }
     var when = data.at ? new Date(data.at).toLocaleString('en-GB', { timeZone: 'Africa/Banjul', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
