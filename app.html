@@ -75,6 +75,7 @@ a.btn{text-decoration:none}
 .chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:14px;cursor:pointer;white-space:nowrap}
 .chip[aria-pressed="true"]{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
 .chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+.idesc{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.45;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0}
 .pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700;background:var(--brand-soft);color:var(--ask)}
 .pill.ok{background:var(--target-soft);color:var(--target)}
 .pill.bad{background:var(--low-soft);color:var(--low)}
@@ -630,6 +631,7 @@ function saleSheet(itemId, saleId) {
   const retQty = ex ? sum(ex.returns || [], x => num(x.qty)) : 0;
   const body = `<div class="row" style="flex-wrap:nowrap">${img(r, 'thumb lg')}<div style="min-width:0"><div class="t" style="font-weight:700">${esc(r.name)}</div><div class="small muted">${esc(r.code)} · ${r.left + (ex ? num(ex.qty) : 0)} in stock${r.sizes ? ' · ' + esc(r.sizes) : ''}</div></div></div>
     ${priceTrio(r)}
+    ${r.desc ? `<details><summary class="small" style="cursor:pointer;font-weight:700">Details for buyers</summary><p class="idesc" style="margin-top:6px">${esc(r.desc)}</p></details>` : ''}
     ${ex ? `<p class="small muted" style="margin:0">Receipt ${esc(ex.invoiceNo || '–')}${cu ? ' · customer ' + esc(cu.code) : ''} ${OWN() ? ` · profit on this sale <b>${D(num(ex.total) - num(ex.qty) * num(r.landed))}</b> (landed cost ${D(r.landed)} a piece)` : ''}${retQty ? ` · ${retQty} piece${retQty === 1 ? '' : 's'} returned` : ''}</p>` : ''}
     <form id="saleF" class="list" style="gap:12px">
       <div class="fgrid"><label class="f">Pieces<div class="stepper"><button type="button" data-step="-1" aria-label="One less">−</button><input id="sQty" inputmode="numeric" value="${esc(v.qty)}"><button type="button" data-step="1" aria-label="One more">+</button></div></label>
@@ -1061,8 +1063,8 @@ function backupTables() {
       Math.max(0, num(s.qty) * num(s.price) - num(s.total)), num(s.total), num(s.paid), num(s.total) - num(s.paid), s.payment || '', s.channel || '', sum(s.returns || [], x => num(x.qty)) || '', s.belowLowest ? 'yes' : '', s.note || '', s.id]));
   T.Customers = [['Customer ID', 'Name', 'Phone', 'Since', 'Purchases', 'Bought in total', 'Owes']].concat(S.customers.map(c => { const ss = custSales(c);
     return [c.code, c.name, c.phone || '', String(c.createdAt || '').slice(0, 10), new Set(ss.map(s => s.invoiceNo || s.id)).size, sum(ss, s => num(s.total)), sum(ss, s => num(s.total) - num(s.paid))]; }));
-  T.Items = [['Shipment', 'Code', 'Item', 'Group', 'Sizes', 'Bought', 'Sold', 'Stock changes', 'Left', 'China price (RMB)', 'Landed cost (D)', 'Target', 'Ask', 'Lowest', 'Price used', 'For sale']];
-  S.ships.forEach(sh => calcShip(sh).items.forEach(r => T.Items.push([sh.name, r.code, r.name, r.group, r.sizes || '', r.qty, r.sold, r.adj || 0, r.left, num(r.rmb), Math.round(r.landed), r.target, r.ask, r.lowest, r.used, r.forSale ? 'yes' : 'no'])));
+  T.Items = [['Shipment', 'Code', 'Item', 'Group', 'Sizes', 'Bought', 'Sold', 'Stock changes', 'Left', 'China price (RMB)', 'Landed cost (D)', 'Target', 'Ask', 'Lowest', 'Price used', 'For sale', 'Details for buyers']];
+  S.ships.forEach(sh => calcShip(sh).items.forEach(r => T.Items.push([sh.name, r.code, r.name, r.group, r.sizes || '', r.qty, r.sold, r.adj || 0, r.left, num(r.rmb), Math.round(r.landed), r.target, r.ask, r.lowest, r.used, r.forSale ? 'yes' : 'no', r.desc || ''])));
   T.Shipments = [['Shipment', 'Status', 'Ordered', 'Arrived', 'Rate (D per RMB)', 'Goods (RMB)', 'Goods (D)', 'Import costs (D)', 'Expenses (D)', 'Sales (D)', 'Cash in (D)', 'Owed (D)']]
     .concat(S.ships.map(sh => { const c = calcShip(sh); return [sh.name, sh.status || '', sh.ordered || '', sh.arrived || '', +c.rate.toFixed(3), c.goodsRMB, Math.round(c.goodsGMD), Math.round(c.importCosts), Math.round(c.expenses), Math.round(c.salesValue), Math.round(c.cash), Math.round(c.owed)]; }));
   T.Expenses = [['Date', 'Category', 'Amount (D)', 'Paid with', 'Shipment', 'Note']].concat(S.expenses.slice().sort((a, b) => String(a.date).localeCompare(String(b.date))).map(e => [e.date, e.category, num(e.amount), e.method || 'Cash', shipName(e.ship) || 'Whole business', e.note || '']));
@@ -1196,18 +1198,37 @@ function restoreSheet() {
    the list "catalog/main" up to date; the store's server shows only that list, never costs or customers. */
 const HOST = () => window.SHOPBOOK_SERVER || null;
 const catOn = () => !!(ST().catalog && ST().catalog.on);
+const LEFT_MODES = { number: 'the number (e.g. "5 left")', stock: '"In stock" only, never the number', few: '"In stock", or "Only N left" when few are left' };
+const catLeft = () => { const c = ST().catalog || {}; const m = LEFT_MODES[c.left] ? c.left : 'number'; const f = Math.round(num(c.few)); return { mode: m, few: f >= 1 && f <= 50 ? f : 3 }; };
+const catLeftText = () => { const L = catLeft(); return L.mode === 'number' ? 'the number of pieces left' : L.mode === 'stock' ? '"In stock" (never the number)' : `"In stock", or "Only N left" when ${L.few} or fewer are left`; };
+function catLeftSheet() {
+  const L = catLeft();
+  openSheet('Pieces left on the catalogue', `<form id="clF" class="list" style="gap:12px">
+    <p class="note" style="margin:0">What buyers see about how many pieces you have. Sold-out products are never shown. The store's server leaves the number out, so it cannot be read from the page either.</p>
+    ${Object.keys(LEFT_MODES).map(k => `<label class="row" style="flex-wrap:nowrap"><input type="radio" name="clM" value="${k}" style="width:22px;min-height:22px" ${k === L.mode ? 'checked' : ''}> Show ${esc(LEFT_MODES[k])}</label>`).join('')}
+    <label class="f">"Few" means this many or fewer <span class="h">only for the last choice</span><input id="clN" inputmode="numeric" value="${L.few}"></label>
+    <button class="btn primary lg block" type="submit">Save</button></form>`, sh => {
+    $('#clF', sh).addEventListener('submit', async e => {
+      e.preventDefault();
+      const m = ($('input[name=clM]:checked', sh) || {}).value || 'number', n = Math.round(num($('#clN', sh).value));
+      if (m === 'few' && !(n >= 1 && n <= 50)) return toast('Write a number from 1 to 50.');
+      const next = { ...(ST().catalog || {}), left: m, few: m === 'few' ? n : (catLeft().few) };
+      if (await saveSettings({ catalog: next })) { logEvent('Catalogue setting', 'settings', 'Pieces left: ' + (m === 'few' ? `only N left when ${n} or fewer` : m === 'stock' ? 'in stock only' : 'the number')); toast('Saved'); closeSheet(); }
+    });
+  });
+}
 const catLink = () => (HOST() && HOST().catalogueUrl) || (ST().catalog && ST().catalog.url) || '';
 function catalogPanel() {
   if (!HOST()) return '';
   const on = catOn(), link = catLink(), c = S.catalog;
   const when = c && c.at ? new Date(c.at).toLocaleString('en-GB', { timeZone: TZ, day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
   return `<div class="panel"><div class="spread"><h2>Public catalogue</h2><span class="pill ${on ? 'ok' : ''}">${on ? 'On' : 'Off'}</span></div>
-    <p class="note">A page anyone can open with the link, no PIN: the products for sale with photo, name, sizes, <b>one price</b> (your target price) and <b>pieces left</b>. It never shows asking prices, lowest prices, costs, customers or money totals.</p>
+    <p class="note">A page anyone can open with the link, no PIN: the products for sale with photo, name, sizes, details for buyers, <b>one price</b> (your target price) and <b>${esc(catLeftText())}</b>. It never shows asking prices, lowest prices, costs, customers or money totals.</p>
     ${on && link ? `<p style="margin:8px 0 0;overflow-wrap:anywhere">Link: <a href="${esc(link)}" target="_blank" rel="noopener"><b>${esc(link)}</b></a></p>
       <div class="fgrid" style="margin-top:8px"><button type="button" class="btn" data-act="catCopy">Copy the link</button><a class="btn" href="https://wa.me/?text=${encodeURIComponent(BIZ() + ': see what we have in stock ' + link)}" target="_blank" rel="noopener">Share on WhatsApp</a></div>` : ''}
     ${on && !link ? '<p class="note">Open the Shop Book app (the installed one) to see and copy the link.</p>' : ''}
     ${on ? `<p class="small muted" style="margin:8px 0 0">${c ? `Last updated ${esc(when)} · ${(c.items || []).length} products` : 'Being prepared'}. It updates by itself whenever you or ${esc(SELLER())} open the Shop Book.</p>` : ''}
-    ${OWN() ? `<div class="fgrid" style="margin-top:10px"><button type="button" class="btn ${on ? 'ghost' : 'primary'}" data-act="catToggle">${on ? 'Turn the catalogue off' : 'Turn the catalogue on'}</button></div>` : ''}</div>`;
+    ${OWN() ? `<div class="fgrid" style="margin-top:10px"><button type="button" class="btn" data-act="catLeft">Pieces left: change what buyers see</button><button type="button" class="btn ${on ? 'ghost' : 'primary'}" data-act="catToggle">${on ? 'Turn the catalogue off' : 'Turn the catalogue on'}</button></div>` : ''}</div>`;
 }
 function catalogBody() {
   const items = [];
@@ -1820,13 +1841,14 @@ function itemSheet(itemId) {
   const info = it && it.forSale ? OWN() ? `${priceTrio(it)}<div class="kv small"><span>China price</span><b>${num(it.rmb)} RMB</b><span>Landed cost (used for target)</span><b>${D(it.landed)}</b><span>Own cost (used for lowest)</span><b>${D(it.own)}</b><span>Lowest = own cost + (${it.flSrc === 'item' ? 'this item' : it.flSrc === 'group' ? esc(it.group) : 'general'})</span><b>${P(it.fl)}</b><span>Markup (${it.mkSrc === 'item' ? 'this item' : esc(it.group)})</span><b>${P(it.mk)}</b>${num(it.finalPrice) > 0 ? `<span>Target from markup (not used: own selling price ${D(it.finalPrice)} is set)</span><b>${D(it.mkTarget)}</b>` : ''}<span>Sold / bought</span><b>${it.sold} / ${it.qty}</b></div>` : `${priceTrio(it)}<div class="kv small"><span>Sold / bought</span><b>${it.sold} / ${it.qty}</b></div>` : '';
   const ro = !OWN();
   const adjs = it ? S.adjustments.filter(a => a.itemId === it.id).sort((a, b) => String(b.date).localeCompare(String(a.date))) : [];
-  openSheet(it ? it.name : 'Add item', `${it ? `<div class="row" style="flex-wrap:nowrap">${img(it, 'thumb lg')}<div class="small muted">${esc(it.code)} · ${esc(it.group)}${it.sizes ? '<br>' + esc(it.sizes) : ''}</div></div>` : ''}${info}
+  openSheet(it ? it.name : 'Add item', `${it ? `<div class="row" style="flex-wrap:nowrap">${img(it, 'thumb lg')}<div class="small muted">${esc(it.code)} · ${esc(it.group)}${it.sizes ? '<br>' + esc(it.sizes) : ''}</div></div>${it.desc ? `<div><h3 style="margin:0 0 4px">Details for buyers</h3><p class="idesc">${esc(it.desc)}</p></div>` : ''}` : ''}${info}
     ${it && it.forSale && S.canWrite ? `<button type="button" class="btn block" id="iAdj">Damaged, lost, given away or found? Record a stock change</button>` : ''}
     ${ro && S.canWrite ? '<p class="note" style="margin:0">Only the owner can change prices and item details.</p>' : ''}
     ${ro ? '' : `<form id="itF" class="list" style="gap:12px">
       <div class="fgrid"><label class="f">Code<input id="iCode" value="${esc(v.code)}" placeholder="e.g. SHO-008"></label><label class="f">Name<input id="iName" value="${esc(v.name)}"></label></div>
       <div class="fgrid"><label class="f">Group<select id="iGroup">${groups.includes(v.group) || !v.group ? '' : `<option selected>${esc(v.group)}</option>`}${groups.map(g => `<option${g === v.group ? ' selected' : ''}>${esc(g)}</option>`).join('')}<option value="__new__">+ New group…</option></select></label>
         <label class="f">Sizes / colours<input id="iSizes" value="${esc(v.sizes)}"></label></div>
+      <label class="f">Details for buyers <span class="h">optional, shown in the public catalogue: model, size, what is included… (up to 1000 letters)</span><textarea id="iDesc" rows="4" maxlength="1000" placeholder="e.g. Core i5, 8 GB RAM, 256 GB SSD, 14-inch screen, charger included">${esc(v.desc || '')}</textarea></label>
       <div class="fgrid" id="iNewG" hidden><label class="f">New group name<input id="iNgName" placeholder="e.g. Watches"></label><label class="f">Markup for this group (%)<input id="iNgMk" inputmode="decimal" value="${Math.round((num(st.defaultMarkup) || 0.45) * 100)}"></label></div>
       <div class="fgrid"><label class="f">Pieces bought<input id="iQty" inputmode="numeric" value="${esc(v.qty)}"></label><label class="f">China price per piece (RMB)<input id="iRmb" inputmode="decimal" value="${esc(v.rmb)}"></label></div>
       <div class="fgrid"><label class="f">Market price seen (D) <span class="h">optional</span><input id="iMkt" inputmode="decimal" value="${esc(v.market || '')}"></label>
@@ -1859,13 +1881,15 @@ function itemSheet(itemId) {
       const d = { ship: it ? it.ship : ship.id, code: $('#iCode', sh).value.trim().toUpperCase(), name: $('#iName', sh).value.trim(), group: $('#iGroup', sh).value, sizes: $('#iSizes', sh).value.trim(),
         qty: Math.max(0, Math.round(num($('#iQty', sh).value))), rmb: num($('#iRmb', sh).value), forSale: $('#iSale', sh).checked, photo,
         market: num($('#iMkt', sh).value) || null, finalPrice: num($('#iFinal', sh).value) || null, floorPct: String($('#iFloor', sh).value).trim() === '' ? null : num($('#iFloor', sh).value) / 100,
-        markupPct: String($('#iMk', sh).value).trim() === '' ? null : num($('#iMk', sh).value) / 100 };
+        markupPct: String($('#iMk', sh).value).trim() === '' ? null : num($('#iMk', sh).value) / 100,
+        desc: String($('#iDesc', sh).value).replace(/\r\n?/g, '\n').trim().slice(0, 1000) };
+      if (it && it.note) d.note = it.note;
       if (d.markupPct != null && !(d.markupPct >= 0)) return toast('Write the markup as a number, e.g. 60.');
       if (!d.name) return toast('Give the item a name.');
       if (!d.code) return toast('Give the item a short code, e.g. SHO-008.');
       const id = it ? it.id : (d.ship + '-' + d.code.replace(/[^A-Za-z0-9_\-.~:@+]/g, '-'));
       if (!it && S.items.some(i => i.id === id)) return toast('That code is already used in this shipment.');
-      const ok = await write(() => S.db.doc('items/' + id).set(d), it ? 'Item saved' : 'Item added'); if (ok) logEvent(it ? 'Changed an item' : 'Added an item', id, `${d.code} ${d.name}${it && num(it.finalPrice) !== num(d.finalPrice) ? ` · own price ${d.finalPrice ? D(d.finalPrice) : 'removed'}` : ''}${it && String(it.markupPct ?? '') !== String(d.markupPct ?? '') ? ` · markup ${d.markupPct == null ? 'back to group %' : Math.round(d.markupPct * 100) + '%'}` : ''}${it && String(it.floorPct ?? '') !== String(d.floorPct ?? '') ? ` · lowest ${d.floorPct == null ? 'back to group %' : '+' + Math.round(d.floorPct * 100) + '%'}` : ''}`);
+      const ok = await write(() => S.db.doc('items/' + id).set(d), it ? 'Item saved' : 'Item added'); if (ok) logEvent(it ? 'Changed an item' : 'Added an item', id, `${d.code} ${d.name}${it && String(it.desc || '') !== d.desc ? ' · details ' + (d.desc ? 'changed' : 'removed') : !it && d.desc ? ' · with details' : ''}${it && num(it.finalPrice) !== num(d.finalPrice) ? ` · own price ${d.finalPrice ? D(d.finalPrice) : 'removed'}` : ''}${it && String(it.markupPct ?? '') !== String(d.markupPct ?? '') ? ` · markup ${d.markupPct == null ? 'back to group %' : Math.round(d.markupPct * 100) + '%'}` : ''}${it && String(it.floorPct ?? '') !== String(d.floorPct ?? '') ? ` · lowest ${d.floorPct == null ? 'back to group %' : '+' + Math.round(d.floorPct * 100) + '%'}` : ''}`);
       if (ok) closeSheet();
     });
     const del = $('#iDel', sh); if (del) del.onclick = () => { if (hist.length || S.adjustments.some(a => a.itemId === it.id)) purgeSheet(null, [it.id]); else $('#iDelBox', sh).hidden = false; };
@@ -2543,7 +2567,8 @@ document.addEventListener('click', e => {
   else if (a === 'count') countSheet();
   else if (a === 'log') logSheet();
   else if (a === 'bkFile') downloadBackup(t);
-  else if (a === 'catToggle') { const on = !catOn(); saveSettings({ catalog: { on, url: catLink() } }).then(ok => { if (!ok) return; logEvent(on ? 'Catalogue on' : 'Catalogue off', 'settings', on ? 'Public catalogue switched on' : 'Public catalogue switched off'); toast(on ? 'The catalogue is on' : 'The catalogue is off'); }); }
+  else if (a === 'catLeft') catLeftSheet();
+  else if (a === 'catToggle') { const on = !catOn(); saveSettings({ catalog: { ...(ST().catalog || {}), on, url: catLink() } }).then(ok => { if (!ok) return; logEvent(on ? 'Catalogue on' : 'Catalogue off', 'settings', on ? 'Public catalogue switched on' : 'Public catalogue switched off'); toast(on ? 'The catalogue is on' : 'The catalogue is off'); }); }
   else if (a === 'catCopy') { Promise.resolve().then(() => navigator.clipboard.writeText(catLink())).then(() => toast('Link copied'), () => toast('Could not copy. Press on the link to copy it.')); }
   else if (a === 'bkSheet') backupToSheet(t);
   else if (a === 'bkRestore') restoreSheet();

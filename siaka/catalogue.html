@@ -47,6 +47,21 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
 .msg{background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px;text-align:center;color:var(--muted)}
 .msg button{margin-top:12px;font:inherit;font-weight:700;border:0;border-radius:10px;background:var(--navy);color:#fff;padding:10px 18px;min-height:44px;cursor:pointer}
 .note{color:var(--muted);font-size:13px;margin-top:18px;text-align:center}
+.ds{font-size:13px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line}
+.more{font:inherit;font-size:14px;font-weight:700;border:1px solid var(--line);background:#fff;color:var(--navy);border-radius:10px;padding:6px 10px;min-height:38px;cursor:pointer;text-align:left}
+.ph.tap{cursor:pointer}
+.ov{position:fixed;inset:0;z-index:20;background:rgba(10,18,30,.6);display:flex;align-items:flex-end;justify-content:center}
+.ov[hidden]{display:none}
+.dlg{background:#fff;width:100%;max-width:560px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:0 0 18px}
+.dlg .top{position:sticky;top:0;display:flex;justify-content:flex-end;padding:8px;background:linear-gradient(#fff,rgba(255,255,255,0))}
+.dlg .x{font:inherit;font-weight:700;border:0;background:#eef2f6;color:var(--ink);border-radius:999px;min-width:44px;min-height:44px;cursor:pointer}
+.dlg .big{background:#eef2f6;margin-top:-60px}
+.dlg .big img{width:100%;max-height:60vh;object-fit:contain;display:block}
+.dlg .in{padding:14px 16px 0;display:grid;gap:10px}
+.dlg h2{font-family:"Bricolage Grotesque",system-ui,sans-serif;font-size:22px;line-height:1.15;margin:0;overflow-wrap:anywhere}
+.dlg .txt{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;margin:0}
+.dlg .askbig{display:flex;align-items:center;justify-content:center;min-height:48px;border-radius:12px;background:var(--navy);color:#fff;font-weight:700;text-decoration:none}
+@media (min-width:640px){.ov{align-items:center}.dlg{border-radius:18px}}
 @media (min-width:640px){h1{font-size:34px}.grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}}
 </style>
 </head>
@@ -58,6 +73,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
   <div id="out"><div class="msg">Loading the products…</div></div>
   <p class="note">Prices in Dalasi. Stock changes during the day: ask us before you come.</p>
 </main>
+<div class="ov" id="ov" hidden><div class="dlg" id="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgT"></div></div>
 <script>
 (function () {
   'use strict';
@@ -91,19 +107,57 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
   function render() {
     var q = $('q').value.trim().toLowerCase(), wa = waNum(data.phone), name = data.business || CFG.name || '';
     var list = (data.items || []).filter(function (x) {
-      return (group === 'All' || x.group === group) && (!q || (x.name + ' ' + x.code + ' ' + x.group + ' ' + x.sizes).toLowerCase().indexOf(q) >= 0);
+      return (group === 'All' || x.group === group) && (!q || (x.name + ' ' + x.code + ' ' + x.group + ' ' + x.sizes + ' ' + (x.desc || '')).toLowerCase().indexOf(q) >= 0);
     });
     $('count').textContent = (data.items || []).length ? list.length + ' product' + (list.length === 1 ? '' : 's') : '';
     if (!(data.items || []).length) { $('out').innerHTML = '<div class="msg">Nothing in stock to show right now. Come back soon.</div>'; return; }
     if (!list.length) { $('out').innerHTML = '<div class="msg">Nothing matches your search.</div>'; return; }
-    $('out').innerHTML = '<div class="grid">' + list.map(function (x) {
+    shown = list;
+    $('out').innerHTML = '<div class="grid">' + list.map(function (x, i) {
       var ph = x.photo ? '<img src="' + esc(x.photo) + '" alt="' + esc(x.name) + '" loading="lazy">' : esc(x.code || '');
-      var askLink = wa ? '<a class="ask" href="https://wa.me/' + wa + '?text=' + encodeURIComponent('Hello ' + name + ', I am interested in ' + x.name + (x.code ? ' (' + x.code + ')' : '') + '.') + '" target="_blank" rel="noopener">Ask us</a>' : '';
-      return '<article class="card"><div class="ph">' + ph + '</div><div class="body"><div class="nm">' + esc(x.name) + '</div>' + (x.sizes ? '<div class="sz">' + esc(x.sizes) + '</div>' : '') +
+      var askLink = wa ? '<a class="ask" href="' + askUrl(x) + '" target="_blank" rel="noopener">Ask us</a>' : '';
+      return '<article class="card"><div class="ph' + (x.desc ? ' tap" data-i="' + i : '') + '">' + ph + '</div><div class="body"><div class="nm">' + esc(x.name) + '</div>' + (x.sizes ? '<div class="sz">' + esc(x.sizes) + '</div>' : '') +
+        (x.desc ? '<div class="ds">' + esc(x.desc) + '</div><button type="button" class="more" data-i="' + i + '">See details</button>' : '') +
         '<div class="pr"><div class="p-price"><div class="k">Price</div><div class="v">' + D(x.price) + '</div></div></div>' +
-        '<div class="foot"><span class="left">' + x.left + ' left</span>' + askLink + '</div></div></article>';
+        '<div class="foot"><span class="left">' + esc(leftText(x)) + '</span>' + askLink + '</div></div></article>';
     }).join('') + '</div>';
   }
+  // pieces left as the owner chose: the number, "In stock", or "Only N left" when few (the server leaves hidden numbers out)
+  function leftText(x) {
+    var n = Number(x.left);
+    if (x.left == null || !(n > 0)) return 'In stock';
+    return data.leftMode === 'few' ? 'Only ' + n + ' left' : n + ' left';
+  }
+  function askUrl(x) {
+    var name = data.business || CFG.name || '';
+    return 'https://wa.me/' + waNum(data.phone) + '?text=' + encodeURIComponent('Hello ' + name + ', I am interested in ' + x.name + (x.code ? ' (' + x.code + ')' : '') + '.');
+  }
+  // the details of one product, over the list; the phone's Back button closes it
+  var opened = false, lastFocus = null;
+  function openDetails(x) {
+    var wa = waNum(data.phone);
+    $('dlg').innerHTML = '<div class="top"><button type="button" class="x" id="dlgX" aria-label="Close">✕</button></div>' +
+      (x.photo ? '<div class="big"><img src="' + esc(x.photo) + '" alt="' + esc(x.name) + '"></div>' : '') +
+      '<div class="in"><h2 id="dlgT">' + esc(x.name) + '</h2>' +
+      '<div class="sz">' + esc([x.code, x.sizes].filter(Boolean).join(' · ')) + '</div>' +
+      '<div class="pr"><div class="p-price"><div class="k">Price</div><div class="v">' + D(x.price) + '</div></div></div>' +
+      '<div class="left">' + esc(leftText(x)) + '</div>' +
+      '<p class="txt">' + esc(x.desc || '') + '</p>' +
+      (wa ? '<a class="askbig" href="' + askUrl(x) + '" target="_blank" rel="noopener">Ask about this on WhatsApp</a>' : '') + '</div>';
+    lastFocus = document.activeElement; $('ov').hidden = false; document.body.style.overflow = 'hidden'; $('dlgX').focus();
+    if (!opened) { opened = true; try { history.pushState({ details: 1 }, ''); } catch (e) {} }
+  }
+  function closeDetails(fromBack) {
+    if ($('ov').hidden) return;
+    $('ov').hidden = true; $('dlg').innerHTML = ''; document.body.style.overflow = '';
+    if (opened) { opened = false; if (!fromBack) { try { history.back(); } catch (e) {} } }
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+  var shown = [];
+  $('out').addEventListener('click', function (e) { var b = e.target.closest('[data-i]'); if (b && shown[+b.getAttribute('data-i')]) openDetails(shown[+b.getAttribute('data-i')]); });
+  $('ov').addEventListener('click', function (e) { if (e.target === $('ov') || e.target.closest('#dlgX')) closeDetails(false); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeDetails(false); });
+  window.addEventListener('popstate', function () { closeDetails(true); });
   $('q').addEventListener('input', function () { if (data) render(); });
   $('chips').addEventListener('click', function (e) { var b = e.target.closest('[data-g]'); if (!b) return; group = b.getAttribute('data-g'); Array.prototype.forEach.call($('chips').children, function (c) { c.setAttribute('aria-pressed', c === b); }); render(); });
   if (!CFG.api) { $('out').innerHTML = '<div class="msg">This page is missing the store link.</div>'; return; }
