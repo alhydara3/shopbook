@@ -1623,6 +1623,28 @@ function catLeftSheet() {
     });
   });
 }
+/* The last line of the public catalogue page. Empty = the standard sentence. Plain text, up to 300 letters. */
+const CAT_FOOT = 'Prices in Dalasi. Stock changes during the day: ask us before you come.';
+const catFoot = () => { const f = String((ST().catalog || {}).footer || '').trim(); return f || CAT_FOOT; };
+function catFootSheet() {
+  openSheet('Catalogue footer text', `<form id="cfF" class="list" style="gap:12px">
+    <p class="note" style="margin:0">The last line of the public catalogue page, under the products. Plain text only (no links or bold); a new line stays a new line. Empty the box to go back to the standard sentence.</p>
+    <label class="f">Footer text <span class="h" id="cfC"></span><textarea id="cfT" rows="4" maxlength="300">${esc(catFoot())}</textarea></label>
+    <p class="small muted" style="margin:0">Standard: ${esc(CAT_FOOT)}</p>
+    <div class="fgrid"><button class="btn" type="button" id="cfD">Use the standard sentence</button><button class="btn primary" type="submit">Save</button></div></form>`, sh => {
+    const t = $('#cfT', sh), cnt = () => { $('#cfC', sh).textContent = `${t.value.length} of 300 letters`; };
+    t.addEventListener('input', cnt); cnt();
+    $('#cfD', sh).onclick = () => { t.value = CAT_FOOT; cnt(); };
+    $('#cfF', sh).addEventListener('submit', async e => {
+      e.preventDefault();
+      let f = t.value.replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 300);
+      if (f === CAT_FOOT) f = '';
+      const before = String((ST().catalog || {}).footer || '');
+      if (f === before) { closeSheet(); return toast('Nothing changed'); }
+      if (await saveSettings({ catalog: { ...(ST().catalog || {}), footer: f } })) { logEvent('Catalogue setting', 'settings', f ? 'Footer text: ' + f.replace(/\n/g, ' / ') : 'Footer text: back to the standard sentence'); toast('Saved. The catalogue shows it the next time it is opened.'); closeSheet(); }
+    });
+  });
+}
 const catLink = () => (HOST() && HOST().catalogueUrl) || (ST().catalog && ST().catalog.url) || '';
 function catalogPanel() {
   if (!HOST()) return '';
@@ -1634,7 +1656,8 @@ function catalogPanel() {
       <div class="fgrid" style="margin-top:8px"><button type="button" class="btn" data-act="catCopy">Copy the link</button><a class="btn" href="https://wa.me/?text=${encodeURIComponent(BIZ() + ': see what we have in stock ' + link)}" target="_blank" rel="noopener">Share on WhatsApp</a></div>` : ''}
     ${on && !link ? '<p class="note">Open the Shop Book app (the installed one) to see and copy the link.</p>' : ''}
     ${on ? `<p class="small muted" style="margin:8px 0 0">${c ? `Last updated ${esc(when)} · ${(c.items || []).length} products` : 'Being prepared'}. It updates by itself whenever you or ${esc(SELLER())} open the Shop Book.</p>` : ''}
-    ${OWN() ? `<div class="fgrid" style="margin-top:10px"><button type="button" class="btn" data-act="catLeft">Pieces left: change what buyers see</button><button type="button" class="btn ${on ? 'ghost' : 'primary'}" data-act="catToggle">${on ? 'Turn the catalogue off' : 'Turn the catalogue on'}</button></div>` : ''}</div>`;
+    <p class="small" style="margin:8px 0 0">Footer: <span class="muted" style="white-space:pre-line">${esc(catFoot())}</span></p>
+    ${OWN() ? `<div class="fgrid" style="margin-top:10px"><button type="button" class="btn" data-act="catLeft">Pieces left: change what buyers see</button><button type="button" class="btn" data-act="catFoot">Footer text: change it</button><button type="button" class="btn ${on ? 'ghost' : 'primary'}" data-act="catToggle">${on ? 'Turn the catalogue off' : 'Turn the catalogue on'}</button></div>` : ''}</div>`;
 }
 function catalogBody() {
   const items = [];
@@ -3119,6 +3142,7 @@ document.addEventListener('click', e => {
   else if (a === 'log') logSheet();
   else if (a === 'bkFile') downloadBackup(t);
   else if (a === 'catLeft') catLeftSheet();
+  else if (a === 'catFoot') catFootSheet();
   else if (a === 'catToggle') { const on = !catOn(); saveSettings({ catalog: { ...(ST().catalog || {}), on, url: catLink() } }).then(ok => { if (!ok) return; logEvent(on ? 'Catalogue on' : 'Catalogue off', 'settings', on ? 'Public catalogue switched on' : 'Public catalogue switched off'); toast(on ? 'The catalogue is on' : 'The catalogue is off'); }); }
   else if (a === 'catCopy') { Promise.resolve().then(() => navigator.clipboard.writeText(catLink())).then(() => toast('Link copied'), () => toast('Could not copy. Press on the link to copy it.')); }
   else if (a === 'bkSheet') backupToSheet(t);
