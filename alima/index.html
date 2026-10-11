@@ -262,6 +262,12 @@
     var p = action === 'save' ? call('savePhotos', [token, itemId, list || []], 180000) : call('itemPhotos', [token, itemId], 90000);
     return p.catch(function (e) { if (e && e.net) throw { code: 'unavailable', message: 'no internet' }; throw forApp(e); });
   };
+  // catalogue video (owner only, needs internet): only these server calls
+  window.SHOPBOOK_SERVER.video = function (fn, args) {
+    if (!me || me.role !== 'owner') return Promise.reject({ code: 'not_granted' });
+    if (['itemVideo', 'videoStart', 'videoPart', 'videoFinish', 'videoRemove'].indexOf(fn) < 0) return Promise.reject({ code: 'tool_error', message: 'bad call' });
+    return call(fn, [token].concat(args || []), 180000).catch(function (e) { if (e && e.net) throw { code: 'unavailable', message: 'no internet' }; throw forApp(e); });
+  };
   window.claude = { use: function (n) { return ready.then(function () { return { db: db, user: user, downloads: downloads, mcp: mcp }[n] || null; }); } };
 
   /* the Excel template for "New shipment" comes from the server */
@@ -454,6 +460,8 @@ a.btn{text-decoration:none}
 .cpl .cp{position:relative;width:84px;height:84px;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--surface)}
 .cpl .cp img{width:100%;height:100%;object-fit:cover;display:block}
 .cpl .cp button{position:absolute;top:3px;right:3px;width:28px;height:28px;min-height:28px;padding:0;border-radius:999px;border:0;background:rgba(10,18,30,.75);color:#fff;font-weight:700;cursor:pointer}
+.cvnow{display:flex;gap:10px;align-items:center;margin:6px 0}.cvnow img{width:84px;height:84px;object-fit:cover;border-radius:10px;border:1px solid var(--line)}
+.cvbar{height:8px;border-radius:999px;background:var(--line);overflow:hidden;margin-top:6px}.cvbar>i{display:block;height:100%;background:var(--target);width:0}
 .idesc{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.45;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0}
 .pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700;background:var(--brand-soft);color:var(--ask)}
 .pill.ok{background:var(--target-soft);color:var(--target)}
@@ -2258,6 +2266,8 @@ function itemSheet(itemId) {
       <label class="f">Photo <span class="h">optional, the small photo used everywhere in the Shop Book</span><input id="iPhoto" type="file" accept="image/*"></label>
       ${HOST() ? `<div class="f cpbox"><b>Catalogue photos</b><span class="h">optional, up to ${CP_MAX} bigger photos shown only in the public catalogue (Details). Needs internet.</span>
         ${HOST().photos ? `<div id="cpList" class="cpl"><span class="small muted">${it ? 'Loading…' : 'None yet.'}</span></div><input id="cpAdd" type="file" accept="image/*" multiple>` : '<p class="note" style="margin:4px 0 0">Add them from the installed Shop Book app (this web app needs its Index.html updated first).</p>'}</div>` : ''}
+      ${HOST() ? `<div class="f cpbox"><b>Catalogue video</b><span class="h">optional, one per item, at most 30 seconds, shown only in the public catalogue (Details). It is made smaller on this phone, then sent: needs internet, keep the screen on.</span>
+        ${!it ? '<p class="note" style="margin:4px 0 0">Save the item first, then open it again to add a video.</p>' : !HOST().video ? '<p class="note" style="margin:4px 0 0">Add it from the installed Shop Book app (this web app needs its Index.html updated first).</p>' : `<div id="cvNow" class="small muted">Loading…</div><input id="cvFile" type="file" accept="video/*"><div id="cvSt" class="small" hidden></div><div class="cvbar" id="cvBar" hidden><i></i></div><button type="button" class="btn block" id="cvSend" hidden>Make it smaller and send</button>`}</div>` : ''}
       <button class="btn primary lg block" type="submit">${it ? 'Save item' : 'Add item'}</button>
       ${it ? `<button type="button" class="btn danger block" id="iDel">Delete item</button><div id="iDelBox" class="confirm" hidden><p style="margin:0 0 8px">Delete this item for good?</p><button type="button" class="btn danger" id="iDelYes">Yes, delete</button></div>` : ''}
     </form>`}
@@ -2282,6 +2292,40 @@ function itemSheet(itemId) {
       if (files.length) toast(cp.length >= CP_MAX ? `${CP_MAX} catalogue photos: that is the most` : 'Photo ready'); cpDraw();
     });
     if (cpList) cpList.addEventListener('click', e => { const b = e.target.closest('[data-cprm]'); if (!b) return; cp.splice(+b.dataset.cprm, 1); cpChanged = true; cpDraw(); });
+    // catalogue video: sent on its own (not with Save item), right after it is made smaller
+    const cvNow = $('#cvNow', sh);
+    if (cvNow) {
+      const st = $('#cvSt', sh), bar = $('#cvBar', sh), send = $('#cvSend', sh), fileIn = $('#cvFile', sh);
+      let file = null, made = null, job = {}, rmArmed = false;
+      const say = (m, frac) => { st.hidden = !m; st.textContent = m || ''; bar.hidden = frac == null; if (frac != null) bar.firstChild.style.width = Math.round(frac * 100) + '%'; };
+      const drawNow = v => { rmArmed = false; cvNow.innerHTML = v ? `<div class="cvnow">${v.poster ? `<img src="${esc(v.poster)}" alt="Video still">` : ''}<div><b>Video ${esc(mmss(v.secs))}</b> · ${esc(mb(v.size))}<br><button type="button" class="btn ghost" id="cvRm" style="margin-top:6px">Remove the video</button></div></div>` : 'No video yet.'; };
+      HOST().video('itemVideo', [it.id]).then(drawNow, () => { cvNow.textContent = 'Could not check the video (no internet?).'; });
+      fileIn.addEventListener('change', async () => {
+        file = fileIn.files[0] || null; made = null; job = {}; send.hidden = !file; send.disabled = false; send.textContent = 'Make it smaller and send'; say('');
+        if (!file) return;
+        try { const m = await videoMeta(file); say(`Chosen: ${mmss(m.secs)}, ${mb(file.size)}.${m.secs > VID_SECS + 0.5 ? ` Only the first ${VID_SECS} seconds will be used.` : ''}`); }
+        catch (e) { send.hidden = true; say(e.message || 'This video cannot be read on this phone.'); }
+      });
+      send.addEventListener('click', async () => {
+        send.disabled = true;
+        try {
+          if (!made) { say('Making it smaller… keep the screen on', 0); made = await shrinkVideo(file, f => say(`Making it smaller… ${Math.round(f * 100)}% (keep the screen on)`, f)); }
+          if (made.blob.size > VID_MAX) throw new Error(`Still too big (${mb(made.blob.size)}). Use a shorter video.`);
+          const v = await sendVideo(it.id, made, (i, n) => say(`Sending… piece ${i} of ${n}`, (i - 1) / n), job);
+          drawNow(v); say(''); send.hidden = true; fileIn.value = ''; file = null; made = null; job = {};
+          toast('Video added to the catalogue'); logEvent('Added a catalogue video', it.id, `${it.code} ${it.name} · ${mmss(v.secs)}, ${mb(v.size)}`);
+        } catch (e) {
+          say(vidErr(e)); send.disabled = false; send.textContent = made ? 'Try sending again' : 'Make it smaller and send';
+        }
+      });
+      cvNow.addEventListener('click', async e => {
+        if (e.target.id !== 'cvRm') return;
+        if (!rmArmed) { rmArmed = true; e.target.textContent = 'Tap again to remove it'; return; }
+        e.target.disabled = true;
+        try { await HOST().video('videoRemove', [it.id]); drawNow(null); toast('Video removed'); logEvent('Removed a catalogue video', it.id, `${it.code} ${it.name}`); }
+        catch (err) { e.target.disabled = false; toast(vidErr(err)); }
+      });
+    }
     $('#iGroup', sh).addEventListener('change', e => { const nw = e.target.value === '__new__'; $('#iNewG', sh).hidden = !nw; if (nw) $('#iNgName', sh).focus(); });
     f.addEventListener('submit', async e => {
       e.preventDefault();
@@ -2315,10 +2359,81 @@ function itemSheet(itemId) {
       if (ok) closeSheet();
     });
     const del = $('#iDel', sh); if (del) del.onclick = () => { if (hist.length || S.adjustments.some(a => a.itemId === it.id)) purgeSheet(null, [it.id]); else $('#iDelBox', sh).hidden = false; };
-    sh.addEventListener('click', e => { if (e.target.id === 'iDelYes') { if (HOST() && HOST().photos) HOST().photos('save', it.id, []).catch(() => {}); } if (e.target.id === 'iDelYes') write(() => S.db.doc('items/' + it.id).delete(), 'Item deleted').then(ok => { if (ok) { logEvent('Deleted an item', it.id, it.code + ' ' + it.name, it); closeSheet(); } }); });
+    sh.addEventListener('click', e => { if (e.target.id === 'iDelYes') { if (HOST() && HOST().photos) HOST().photos('save', it.id, []).catch(() => {}); if (HOST() && HOST().video) HOST().video('videoRemove', [it.id]).catch(() => {}); } if (e.target.id === 'iDelYes') write(() => S.db.doc('items/' + it.id).delete(), 'Item deleted').then(ok => { if (ok) { logEvent('Deleted an item', it.id, it.code + ' ' + it.name, it); closeSheet(); } }); });
   });
 }
-const CP_MAX = 4;
+const CP_MAX = 4, VID_SECS = 30, VID_PART = 700000, VID_MAX = 12 * 1024 * 1024;
+const mmss = s => { s = Math.round(num(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+const mb = b => (num(b) / 1048576).toFixed(1) + ' MB';
+function vidErr(e) {
+  const m = String((e && e.message) || e || '');
+  if (e && (e.code === 'unavailable' || e.net)) return 'Sending stopped: no internet. Tap "Try sending again" when the internet is back.';
+  if (/video_too_long/.test(m)) return 'The video is longer than 30 seconds.';
+  if (/video_too_big/.test(m)) return 'The video is too big. Use a shorter video.';
+  if (/bad_video/.test(m)) return 'This file is not a video the catalogue can play.';
+  if (/not_allowed|not_granted/.test(m) || (e && e.code === 'not_granted')) return 'Only the owner can add a catalogue video.';
+  return m || 'Something went wrong. Try again.';
+}
+function recType() {
+  if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) return '';
+  return ['video/mp4;codecs="avc1.42E01E,mp4a.40.2"', 'video/mp4;codecs=avc1', 'video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus', 'video/webm'].find(x => MediaRecorder.isTypeSupported(x)) || '';
+}
+function videoMeta(file) {
+  return new Promise((res, rej) => { const v = document.createElement('video'), url = URL.createObjectURL(file); v.preload = 'metadata'; v.muted = true;
+    v.onloadedmetadata = () => { const d = v.duration; URL.revokeObjectURL(url); res({ secs: isFinite(d) ? d : 0, w: v.videoWidth, h: v.videoHeight }); };
+    v.onerror = () => { URL.revokeObjectURL(url); rej(new Error('This video cannot be read on this phone.')); }; v.src = url; });
+}
+// Plays the video once on a hidden canvas at 480p and records it again (at most 30 s): a 30 s clip becomes about 3-4 MB.
+async function shrinkVideo(file, onP) {
+  const type = recType(), v = document.createElement('video'), url = URL.createObjectURL(file);
+  v.playsInline = true; v.preload = 'auto'; v.src = url;
+  await new Promise((res, rej) => { v.onloadeddata = res; v.onerror = () => rej(new Error('This video cannot be read on this phone.')); });
+  const full = isFinite(v.duration) && v.duration > 0 ? v.duration : VID_SECS, secs = Math.min(VID_SECS, full);
+  const pc = document.createElement('canvas'), pk = Math.min(1, 320 / Math.max(v.videoWidth, v.videoHeight));
+  pc.width = Math.max(1, Math.round(v.videoWidth * pk)); pc.height = Math.max(1, Math.round(v.videoHeight * pk));
+  pc.getContext('2d').drawImage(v, 0, 0, pc.width, pc.height); const poster = pc.toDataURL('image/jpeg', 0.6);
+  if (!type) {   // no recorder on this phone: only a small enough mp4/webm can go as it is
+    URL.revokeObjectURL(url);
+    if (file.size <= VID_MAX && /^video\/(mp4|webm)/.test(file.type) && full <= VID_SECS + 1) return { blob: file, type: file.type.split(';')[0], secs: Math.round(full * 10) / 10, poster };
+    throw new Error('This phone cannot make videos smaller. Use Chrome on Android, or a video under 12 MB and 30 seconds.');
+  }
+  const k = Math.min(1, 480 / Math.min(v.videoWidth, v.videoHeight)), W = Math.max(2, Math.round(v.videoWidth * k / 2) * 2), H = Math.max(2, Math.round(v.videoHeight * k / 2) * 2);
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const cx = cv.getContext('2d'); cx.drawImage(v, 0, 0, W, H);
+  const stream = cv.captureStream(25); let ac = null;
+  try {   // the sound goes into the recording, not out of the speaker
+    ac = new (window.AudioContext || window.webkitAudioContext)(); const src = ac.createMediaElementSource(v), dst = ac.createMediaStreamDestination();
+    src.connect(dst); await ac.resume(); dst.stream.getAudioTracks().forEach(tr => stream.addTrack(tr));
+  } catch (e) { v.muted = true; }
+  const rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 900000, audioBitsPerSecond: 64000 }), chunks = [];
+  rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  const done = new Promise(res => { rec.onstop = res; });
+  let stopped = false;
+  const finish = () => { if (stopped) return; stopped = true; try { v.pause(); } catch (e) {} if (rec.state !== 'inactive') rec.stop(); };
+  const draw = () => { if (stopped) return; cx.drawImage(v, 0, 0, W, H); if (onP) onP(Math.min(1, v.currentTime / secs));
+    if (v.currentTime >= secs || v.ended) return finish(); v.requestVideoFrameCallback ? v.requestVideoFrameCallback(draw) : requestAnimationFrame(draw); };
+  v.onended = finish; rec.start(1000);
+  try { await v.play(); } catch (e) { v.muted = true; await v.play(); }
+  draw();
+  const guard = setTimeout(finish, (secs + 10) * 1000);
+  await done; clearTimeout(guard); URL.revokeObjectURL(url); try { if (ac) ac.close(); } catch (e) {}
+  return { blob: new Blob(chunks, { type: type.split(';')[0] }), type: type.split(';')[0], secs: Math.round(secs * 10) / 10, poster };
+}
+function blobB64(blob) { return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.onerror = rej; fr.readAsDataURL(blob); }); }
+// Sends the video in pieces; a piece that fails for lack of internet is tried again (3 times); job keeps where it stopped.
+async function sendVideo(itemId, made, onS, job) {
+  const b64 = job.b64 || (job.b64 = await blobB64(made.blob)), n = Math.ceil(b64.length / VID_PART);
+  if (n > 24) throw new Error('video_too_big');
+  if (!job.up) job.up = await HOST().video('videoStart', [itemId, { type: made.type, parts: n, secs: made.secs, size: made.blob.size }]);
+  for (let i = job.next || 0; i < n; i++) {
+    onS(i + 1, n);
+    for (let tries = 1; ; tries++) {
+      try { await HOST().video('videoPart', [job.up, i, b64.slice(i * VID_PART, (i + 1) * VID_PART)]); break; }
+      catch (e) { if (tries >= 3 || !(e && (e.code === 'unavailable' || e.net))) throw e; await new Promise(r => setTimeout(r, 2500 * tries)); }
+    }
+    job.next = i + 1;
+  }
+  return HOST().video('videoFinish', [job.up, made.poster]);
+}
 function bigPhoto(file) {   // long side at most 1000 px, not cropped; smaller again if the file is still big
   return new Promise((res, rej) => { const fr = new FileReader(); fr.onerror = rej; fr.onload = () => { const im = new Image(); im.onerror = rej; im.onload = () => {
     let out = '';

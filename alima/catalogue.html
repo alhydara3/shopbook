@@ -59,8 +59,20 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
 .slide.wait{color:var(--muted);font-weight:700;font-size:14px}
 .gnav{position:absolute;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:999px;border:0;background:rgba(255,255,255,.88);color:var(--ink);font-size:20px;font-weight:700;cursor:pointer;display:none}
 .gnav.prev{left:8px}.gnav.next{right:8px}
-.gcount{position:absolute;right:10px;bottom:10px;background:rgba(10,18,30,.72);color:#fff;font-size:13px;font-weight:700;border-radius:999px;padding:3px 9px}
+.gcount{position:absolute;left:10px;bottom:10px;background:rgba(10,18,30,.72);color:#fff;font-size:13px;font-weight:700;border-radius:999px;padding:3px 9px}
 @media (hover:hover){.gal.multi .gnav{display:block}}
+.badge.vb{right:auto;left:8px}
+.vmini{position:absolute;right:10px;bottom:10px;width:40%;max-width:210px;border-radius:12px;overflow:hidden;background:#000;box-shadow:0 4px 14px rgba(0,0,0,.35);z-index:2}
+.vmini img,.vmini video{display:block;width:100%;max-height:300px;object-fit:cover;background:#000}
+.vmini.big{left:0;right:0;top:0;bottom:0;width:auto;max-width:none;border-radius:0}
+.vmini.big video,.vmini.big img{height:100%;max-height:none;object-fit:contain}
+.vplay{position:absolute;inset:0;margin:auto;width:52px;height:52px;border-radius:999px;border:0;background:rgba(255,255,255,.92);color:var(--ink);font-size:22px;cursor:pointer}
+.vx,.vbig{position:absolute;top:6px;width:32px;height:32px;border-radius:999px;border:0;background:rgba(0,0,0,.6);color:#fff;font-size:15px;cursor:pointer;z-index:3}
+.vx{right:6px}.vbig{left:6px}
+.vmini.big .vx,.vmini.big .vbig{top:66px}
+.vdur{position:absolute;left:6px;bottom:6px;color:#fff;font-size:12px;font-weight:700;text-shadow:0 1px 3px #000}
+.vload{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;background:rgba(0,0,0,.5);font-size:13px;text-align:center;padding:6px}
+.vopen{position:absolute;right:10px;bottom:10px;border:0;border-radius:999px;background:rgba(10,18,30,.8);color:#fff;font:inherit;font-size:13px;font-weight:700;padding:6px 12px;cursor:pointer;z-index:2}
 .dlg h3{font-size:14px;margin:4px 0 0;color:var(--muted);text-transform:none}
 .ph.tap{cursor:pointer}
 .ov{position:fixed;inset:0;z-index:20;background:rgba(10,18,30,.6);display:flex;align-items:flex-end;justify-content:center}
@@ -129,7 +141,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
       var ph = x.photo ? '<img src="' + esc(x.photo) + '" alt="' + esc(x.name) + '" loading="lazy">' : esc(x.code || '');
       var askLink = wa ? '<a class="ask" href="' + askUrl(x) + '" target="_blank" rel="noopener">Ask us</a>' : '';
       var n = 1 + (Number(x.more) || 0);
-      return '<article class="card"><div class="ph tap" data-i="' + i + '">' + ph + (x.photo && n > 1 ? '<span class="badge">' + n + ' photos</span>' : '') + '</div><div class="body"><div class="nm">' + esc(x.name) + '</div>' +
+      return '<article class="card"><div class="ph tap" data-i="' + i + '">' + ph + (x.photo && n > 1 ? '<span class="badge">' + n + ' photos</span>' : '') + (x.vid ? '<span class="badge vb">▶ video</span>' : '') + '</div><div class="body"><div class="nm">' + esc(x.name) + '</div>' +
         '<div class="pr"><div class="p-price"><div class="k">Price</div><div class="v">' + D(x.price) + '</div></div></div>' +
         '<button type="button" class="more" data-i="' + i + '">Details</button>' +
         '<div class="foot"><span class="left">' + esc(leftText(x)) + '</span>' + askLink + '</div></div></article>';
@@ -151,7 +163,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
   function openDetails(x) {
     var wa = waNum(data.phone), more = Number(x.more) || 0; showing = x;
     $('dlg').innerHTML = '<div class="top"><button type="button" class="x" id="dlgX" aria-label="Close">✕</button></div>' +
-      (x.photo || more ? '<div class="gal" id="gal"><div class="track" id="track"></div><button type="button" class="gnav prev" id="gPrev" aria-label="Previous photo">‹</button><button type="button" class="gnav next" id="gNext" aria-label="Next photo">›</button><span class="gcount" id="gCount" hidden></span></div>' : '') +
+      (x.photo || more || x.vid ? '<div class="gal" id="gal"><div class="track" id="track"></div><button type="button" class="gnav prev" id="gPrev" aria-label="Previous photo">‹</button><button type="button" class="gnav next" id="gNext" aria-label="Next photo">›</button><span class="gcount" id="gCount" hidden></span></div>' : '') +
       '<div class="in"><h2 id="dlgT">' + esc(x.name) + '</h2>' +
       (x.code ? '<div class="sz">' + esc(x.code) + '</div>' : '') +
       '<div class="pr"><div class="p-price"><div class="k">Price</div><div class="v">' + D(x.price) + '</div></div></div>' +
@@ -159,7 +171,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
       (x.sizes ? '<h3>Sizes / colours</h3><p class="txt">' + esc(x.sizes) + '</p>' : '') +
       (x.desc ? '<h3>Details</h3><p class="txt">' + esc(x.desc) + '</p>' : '') +
       (wa ? '<a class="askbig" href="' + askUrl(x) + '" target="_blank" rel="noopener">Ask about this on WhatsApp</a>' : '') + '</div>';
-    drawGallery(x);
+    drawGallery(x); if (x.vid) drawVideo(x, !(x.photo || more));
     if (more && !extra[x.pid]) {
       fetch(CFG.api, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'catalogPhotos', args: [x.pid] }), credentials: 'omit', cache: 'no-store' })
         .then(function (r) { return r.text(); }).then(function (t) { var o = JSON.parse(t); if (!o || !o.ok) throw new Error('bad reply'); extra[x.pid] = (o.value || []).filter(okPhoto); })
@@ -168,6 +180,58 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
     }
     lastFocus = document.activeElement; $('ov').hidden = false; document.body.style.overflow = 'hidden'; $('dlgX').focus();
     if (!opened) { opened = true; try { history.pushState({ details: 1 }, ''); } catch (e) {} }
+  }
+  // the video: a small window over the photos (like the shopping apps); nothing is loaded until ▶ is tapped
+  var vids = {};
+  var mmss = function (s) { s = Math.round(Number(s) || 0); return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); };
+  function drawVideo(x, big) {
+    var g = $('gal'); if (!g) return; var old = $('vmini'); if (old) old.remove(); var op = $('vOpen'); if (op) op.remove();
+    var v = x.vid, box = document.createElement('div'); box.className = 'vmini' + (big ? ' big' : ''); box.id = 'vmini';
+    box.innerHTML = (v.poster && /^data:image\/jpeg;base64,/.test(v.poster) ? '<img src="' + esc(v.poster) + '" alt="">' : '<div style="height:160px"></div>') +
+      '<button type="button" class="vplay" id="vPlay" aria-label="Play the video">▶</button><span class="vdur">' + esc(mmss(v.secs)) + ' · ' + esc(((Number(v.size) || 0) / 1048576).toFixed(1)) + ' MB</span>' +
+      '<button type="button" class="vx" id="vX" aria-label="Close the video">✕</button>';
+    if (big) g.style.minHeight = 'min(60vh,420px)';
+    g.appendChild(box);
+    box._close = function () { box.remove(); var b = document.createElement('button'); b.type = 'button'; b.className = 'vopen'; b.id = 'vOpen'; b.textContent = '▶ Video'; b.onclick = function () { drawVideo(x, big); }; g.appendChild(b); };
+    $('vX').onclick = box._close;
+    $('vPlay').onclick = function () { playVideo(x, box); };
+    if (vids[x.pid] && vids[x.pid].url) playVideo(x, box);
+  }
+  function part(pid, i) {
+    return fetch(CFG.api, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'catalogVideo', args: [pid, i] }), credentials: 'omit', cache: 'no-store' })
+      .then(function (r) { return r.text(); }).then(function (t) { var o = JSON.parse(t); if (!o || !o.ok || !o.value || !/^[A-Za-z0-9+\/=]+$/.test(o.value.b64 || '')) throw new Error('bad'); return o.value; });
+  }
+  var bytes = function (b64) { var s = atob(b64), a = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a; };
+  function playVideo(x, box) {
+    var c = vids[x.pid] || (vids[x.pid] = {});
+    var show = function () {
+      if (!box.isConnected) return;
+      box.innerHTML = '<video src="' + c.url + '" playsinline autoplay></video><button type="button" class="vbig" id="vBig" aria-label="Bigger or smaller">⤢</button><button type="button" class="vx" id="vX" aria-label="Close the video">✕</button>';
+      var vd = box.querySelector('video'); vd.onerror = function () { box.insertAdjacentHTML('beforeend', '<div class="vload">This video cannot play on this phone.</div>'); };
+      var p = vd.play(); if (p && p.catch) p.catch(function () {});
+      // small: tap the video to make it big; big: the player's own buttons (pause, sound, full screen)
+      var size = function () { box.classList.toggle('big'); vd.controls = box.classList.contains('big'); };
+      vd.controls = box.classList.contains('big');
+      vd.onclick = function () { if (!vd.controls) size(); };
+      $('vBig').onclick = size;
+      $('vX').onclick = function () { vd.pause(); box._close(); };
+    };
+    if (c.url) return show();
+    if (c.busy) return; c.busy = true;
+    var load = document.createElement('div'); load.className = 'vload'; load.textContent = 'Loading the video…'; box.appendChild(load);
+    var got = [], done = 0, n = 0, type = 'video/mp4';
+    part(x.pid, 0).then(function (p0) {
+      n = Math.max(1, Math.min(24, Number(p0.n) || 1)); type = /^video\/(mp4|webm)$/.test(p0.type) ? p0.type : 'video/mp4'; got[0] = bytes(p0.b64); done = 1;
+      load.textContent = 'Loading the video… ' + Math.round(100 * done / n) + '%';
+      var next = 1;
+      var worker = function () { if (next >= n) return Promise.resolve(); var i = next++; return part(x.pid, i).then(function (p) { got[i] = bytes(p.b64); done++; load.textContent = 'Loading the video… ' + Math.round(100 * done / n) + '%'; return worker(); }); };
+      return Promise.all([worker(), worker(), worker()]);
+    }).then(function () {
+      c.url = URL.createObjectURL(new Blob(got, { type: type })); c.busy = false; show();
+    }).catch(function () {
+      c.busy = false; load.innerHTML = 'The video could not be loaded. Check the internet.<br><button type="button" class="vplay" style="position:static;margin-top:6px;width:auto;height:auto;padding:6px 12px;font-size:13px">Try again</button>';
+      load.querySelector('button').onclick = function (e) { e.stopPropagation(); load.remove(); playVideo(x, box); };
+    });
   }
   // the photos of one product: the main one, then the catalogue photos (swipe, or the arrows on a computer)
   function drawGallery(x) {
