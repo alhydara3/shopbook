@@ -59,6 +59,8 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
 .p-price{background:#e8edf6;color:var(--ask)}
 .foot{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:13px}
 .left{font-weight:700;color:var(--muted)}
+.dep{font-size:13px;color:var(--muted);margin-top:4px}.dep b{color:var(--ink)}
+.howto{background:#eef3fb;border-radius:12px;padding:10px 12px;font-size:14px;line-height:1.45;margin:10px 0 4px}
 .ask{color:var(--navy);font-weight:700;text-decoration:none}
 .msg{background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px;text-align:center;color:var(--muted)}
 .msg button{margin-top:12px;font:inherit;font-weight:700;border:0;border-radius:10px;background:var(--navy);color:#fff;padding:10px 18px;min-height:44px;cursor:pointer}
@@ -136,6 +138,8 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
     // the shop's logo (the receipt logo), only a picture sent as data; otherwise no logo
     var lg = typeof data.logo === 'string' && /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+\/=]+$/.test(data.logo) ? data.logo : '';
     $('logo').hidden = !lg; if (lg) { $('logo').src = lg; $('logo').alt = name + ' logo'; var fi = document.querySelector('link[rel=icon]'); if (fi) fi.href = lg; } else $('logo').removeAttribute('src');
+    // a pre-order store: its standard footer explains the deposit (the owner's own footer still wins)
+    if (ord() && !(typeof data.footer === 'string' && data.footer.trim())) $('foot').textContent = 'Prices in Dalasi. We order from China for you: pay ' + pct() + ' to order and the rest when it arrives' + (ord().arrive ? ' (about ' + ord().arrive + ')' : '') + '.';
     if (typeof data.footer === 'string' && data.footer.trim()) $('foot').textContent = data.footer.trim().slice(0, 300);   // the owner's text; otherwise the standard sentence stays
     if (data.off) { $('tools').hidden = true; $('count').textContent = ''; $('out').innerHTML = '<div class="msg">This catalogue is closed right now.</div>'; return; }
     var when = data.at ? new Date(data.at).toLocaleString('en-GB', { timeZone: 'Africa/Banjul', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
@@ -154,7 +158,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
       return (group === 'All' || x.group === group) && (!q || (x.name + ' ' + x.code + ' ' + x.group + ' ' + x.sizes + ' ' + (x.desc || '')).toLowerCase().indexOf(q) >= 0);
     });
     $('count').textContent = (data.items || []).length ? list.length + ' product' + (list.length === 1 ? '' : 's') : '';
-    if (!(data.items || []).length) { $('out').innerHTML = '<div class="msg">Nothing in stock to show right now. Come back soon.</div>'; return; }
+    if (!(data.items || []).length) { $('out').innerHTML = (ord() ? '<div class="msg">No products to order right now. Come back soon.</div>' : '<div class="msg">Nothing in stock to show right now. Come back soon.</div>'); return; }
     if (!list.length) { $('out').innerHTML = '<div class="msg">Nothing matches your search.</div>'; return; }
     shown = list;
     $('out').innerHTML = '<div class="grid">' + list.map(function (x, i) {
@@ -163,19 +167,25 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
       var n = 1 + (Number(x.more) || 0);
       return '<article class="card"><div class="ph tap" data-i="' + i + '">' + ph + (x.photo && n > 1 ? '<span class="badge">' + n + ' photos</span>' : '') + (x.vid ? '<span class="badge vb">▶ video</span>' : '') + '</div><div class="body"><div class="nm">' + esc(x.name) + '</div>' +
         '<div class="pr"><div class="p-price"><div class="k">Price</div><div class="v">' + D(x.price) + '</div></div></div>' +
+        (ord() ? '<div class="dep">Deposit <b>' + D(depOf(x)) + '</b> (' + pct() + ')</div>' : '') +
         '<button type="button" class="more" data-i="' + i + '">Details</button>' +
         '<div class="foot"><span class="left">' + esc(leftText(x)) + '</span>' + askLink + '</div></div></article>';
     }).join('') + '</div>';
   }
   // pieces left as the owner chose: the number, "In stock", or "Only N left" when few (the server leaves hidden numbers out)
+  // a pre-order store: the reply carries {deposit, arrive}; the deposit is rounded up to D25 like in the Shop Book
+  function ord() { var o = data && data.order; return o && Number(o.deposit) > 0 && Number(o.deposit) <= 1 ? o : null; }
+  function pct() { return Math.round(Number(ord().deposit) * 100) + '%'; }
+  function depOf(x) { var p = Number(x.price) || 0; return Math.min(p, Math.ceil(p * Number(ord().deposit) / 25 - 1e-9) * 25); }
   function leftText(x) {
+    if (ord()) return 'Order now';
     var n = Number(x.left);
     if (x.left == null || !(n > 0)) return 'In stock';
     return data.leftMode === 'few' ? 'Only ' + n + ' left' : n + ' left';
   }
   function askUrl(x) {
     var name = data.business || CFG.name || '';
-    return 'https://wa.me/' + waNum(data.phone) + '?text=' + encodeURIComponent('Hello ' + name + ', I am interested in ' + x.name + (x.code ? ' (' + x.code + ')' : '') + '.');
+    return 'https://wa.me/' + waNum(data.phone) + '?text=' + encodeURIComponent(ord() ? 'Hello ' + name + ', I would like to order ' + x.name + (x.code ? ' (' + x.code + ')' : '') + ', price ' + D(x.price) + '.' : 'Hello ' + name + ', I am interested in ' + x.name + (x.code ? ' (' + x.code + ')' : '') + '.');
   }
   // the details of one product, over the list; the phone's Back button closes it
   var opened = false, lastFocus = null, extra = {}, showing = null;
@@ -187,10 +197,10 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
       '<div class="in"><h2 id="dlgT">' + esc(x.name) + '</h2>' +
       (x.code ? '<div class="sz">' + esc(x.code) + '</div>' : '') +
       '<div class="pr"><div class="p-price"><div class="k">Price</div><div class="v">' + D(x.price) + '</div></div></div>' +
-      '<div class="left">' + esc(leftText(x)) + '</div>' +
+      (ord() ? '<div class="howto"><b>How ordering works</b><br>Pay a deposit of ' + D(depOf(x)) + ' (' + pct() + ') to order. We order it from China for you' + (ord().arrive ? '; it arrives in about ' + esc(ord().arrive) : '') + '. Pay the rest (' + D(Number(x.price) - depOf(x)) + ') when it arrives.</div>' : '<div class="left">' + esc(leftText(x)) + '</div>') +
       (x.sizes ? '<h3>Sizes / colours</h3><p class="txt">' + esc(x.sizes) + '</p>' : '') +
       (x.desc ? '<h3>Details</h3><p class="txt">' + esc(x.desc) + '</p>' : '') +
-      (wa ? '<a class="askbig" href="' + askUrl(x) + '" target="_blank" rel="noopener">Ask about this on WhatsApp</a>' : '') + '</div>';
+      (wa ? '<a class="askbig" href="' + askUrl(x) + '" target="_blank" rel="noopener">' + (ord() ? 'Order this on WhatsApp' : 'Ask about this on WhatsApp') + '</a>' : '') + '</div>';
     drawGallery(x); if (x.vid) drawVideo(x, !(x.photo || more));
     if (more && !extra[x.pid]) {
       fetch(CFG.api, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'catalogPhotos', args: [x.pid] }), credentials: 'omit', cache: 'no-store' })
