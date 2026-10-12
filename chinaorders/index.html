@@ -1694,7 +1694,8 @@ function ordersPanel() {
   const G = poGroups(), n = k => G.filter(g => g.status === k).length, open = G.filter(g => g.status !== 'collected');
   return `<div class="panel"><div class="spread"><h2>Orders</h2><button type="button" class="btn primary" data-act="orders">Open orders</button></div>
     <div class="kv" style="margin-top:10px">${PO_STEPS.slice(0, 4).map(([k, l]) => `<span>${esc(l)}</span><b>${n(k)}</b>`).join('')}</div>
-    <p class="note">Balances still to pay on open orders: <b>${D(sum(open, g => g.due))}</b>. Deposit ${P(PO_DEP())} · ${esc(poArrive())}.</p></div>`;
+    <p class="note">Balances still to pay on open orders: <b>${D(sum(open, g => g.due))}</b>. Deposit ${P(PO_DEP())} · ${esc(poArrive())}.</p>
+    ${OWN() ? '<button type="button" class="btn ghost" data-act="poSet" style="margin-top:8px">Change the deposit % or arrival time</button>' : ''}</div>`;
 }
 function poReceiptLine(r) {
   const i = poIdx(r.po);
@@ -1764,7 +1765,7 @@ function poPanel() {
   if (!S.isOwner) return '';
   return `<div class="panel"><div class="spread"><h2>Store type</h2><span class="pill ${PO() ? 'ok' : ''}">${PO() ? 'Orders from China' : 'Shop with stock'}</span></div>
     <p class="note">${PO() ? `Buyers order and pay a deposit of <b>${P(PO_DEP())}</b>; you order the goods from China; they pay the rest when the goods arrive (${esc(PO_WHEN() ? 'about ' + PO_WHEN() : 'arrival time not set')}). Orders are not limited by stock. Follow them in Sell → Orders.` : 'A shop that sells goods it already has. "Orders from China" is for a store that takes orders with a deposit and buys the goods afterwards.'}</p>
-    ${OWN() ? '<button type="button" class="btn" data-act="poSet" style="margin-top:8px">Change the store type</button>' : ''}</div>`;
+    ${OWN() ? `<button type="button" class="btn" data-act="poSet" style="margin-top:8px">${PO() ? 'Change the deposit %, arrival time or store type' : 'Change the store type'}</button>` : ''}</div>`;
 }
 function poSetSheet() {
   openSheet('Store type', `<form id="poF" class="list" style="gap:12px">
@@ -1799,7 +1800,7 @@ function catalogPanel() {
 }
 function catalogBody() {
   const items = [];
-  S.ships.filter(sh => sh.status === 'Selling' && !/sample shipment \(for testing\)/i.test(sh.name || '')).forEach(sh => {
+  S.ships.filter(sh => (PO() ? sh.status !== 'Closed' : sh.status === 'Selling') && !/sample shipment \(for testing\)/i.test(sh.name || '')).forEach(sh => {
     calcShip(sh).items.filter(r => r.forSale && (r.left > 0 || PO()) && r.catHide !== true).forEach(r => items.push({ id: r.id, code: String(r.code || ''), name: String(r.name || ''), group: String(r.group || ''), sizes: String(r.sizes || ''), price: num(r.target), left: num(r.left) }));
   });
   items.sort((a, b) => a.group.localeCompare(b.group) || a.code.localeCompare(b.code));
@@ -1815,6 +1816,12 @@ function catalogTick() {
 }
 async function publishCatalog() {
   if (catBusy || !catOn() || !S.canWrite) return;
+  // the link is known only to the installed app; a catalogue switched on from the web page has none yet: save it once,
+  // so the web page shows the link and the WhatsApp button too (owner only, online only, never shown as an error)
+  const cu = HOST() && HOST().catalogueUrl, cs = ST().catalog || {};
+  if (cu && OWN() && cs.url !== cu && !S.catUrlTried && navigator.onLine !== false) {
+    S.catUrlTried = true; try { await S.db.doc('settings/main').set({ ...ST(), catalog: { ...cs, url: cu } }); logEvent('Catalogue setting', 'settings', 'Catalogue link saved: ' + cu); } catch (e) { /* tried again next time the app opens */ }
+  }
   const body = catalogBody();
   if (S.catalog && catKey(S.catalog) === catKey(body)) return;
   catBusy = true;
