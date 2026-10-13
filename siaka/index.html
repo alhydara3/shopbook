@@ -617,7 +617,33 @@ const poIdx = k => PO_STEPS.findIndex(x => x[0] === k);
 const poSt = s => s && s.po && poIdx(s.po.status) >= 0 ? s.po.status : 'new';
 const poLabel = k => (PO_STEPS[poIdx(k)] || PO_STEPS[0])[1];
 const poDep = t => Math.min(t, ceilTo(t * PO_DEP(), 25));
-const poArrive = () => PO_WHEN() ? 'arrives in about ' + PO_WHEN() : 'ordered from China for you';
+const poArrive = w => { w = w == null ? PO_WHEN() : String(w); return w ? 'arrives in about ' + w : 'ordered from China for you'; };
+/* A product's own deposit % and arrival time (owner, item form; order stores only). Empty = the store's settings.
+   "Made to order · by sea" is a label for buyers (big or heavy products); it changes nothing else. */
+const itDepOwn = it => { const d = num(it && it.poDep); return d >= 0.1 && d <= 1 ? d : 0; };
+const itDep = it => itDepOwn(it) || PO_DEP();
+const itWhenOwn = it => String((it && it.poWhen) || '').replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, 40);
+const itWhen = it => itWhenOwn(it) || PO_WHEN();
+const itSea = it => !!(it && it.bySea === true);
+const itOwnPo = it => !!(itDepOwn(it) || itWhenOwn(it));
+const SEA_LABEL = 'Made to order · by sea';
+const depFor = (t, d) => Math.min(t, ceilTo(t * d, 25));
+const poLineInfo = r => ['order', itSea(r) ? 'by sea' : '', itDepOwn(r) ? 'deposit ' + P(itDep(r)) : '', itWhenOwn(r) ? 'about ' + itWhenOwn(r) : ''].filter(Boolean).join(' · ');
+// arrival on a receipt or order card: the time saved with each line, else the product's own, else the store's
+function poArrFor(group) {
+  const L = group.filter(x => x.po && num(x.qty) > 0), itOf = x => S.items.find(i => i.id === x.itemId);
+  const w = x => String((x.po && x.po.when) || itWhen(itOf(x)) || '');
+  const ws = [...new Set(L.map(w))];
+  if (ws.length <= 1) return poArrive(ws.length ? ws[0] : undefined);
+  return 'arrival: ' + L.map(x => `${(itOf(x) || {}).name || x.name} ${w(x) ? 'about ' + w(x) : 'not set'}`).join('; ');
+}
+function poItemLog(it, d) {
+  const o = it || {}, out = [];
+  if (num(o.poDep) !== num(d.poDep)) out.push(d.poDep ? 'deposit ' + P(d.poDep) : 'deposit back to the store\'s');
+  if (String(o.poWhen || '') !== String(d.poWhen || '')) out.push(d.poWhen ? 'arrives in about ' + d.poWhen : 'arrival back to the store\'s');
+  if (!!o.bySea !== !!d.bySea) out.push(d.bySea ? 'label ' + SEA_LABEL : 'label removed');
+  return out.map(x => ' · ' + x).join('');
+}
 
 /* ---------- calculations (same method as the Excel workbook) ---------- */
 function calcShip(ship) {
@@ -847,7 +873,7 @@ function vSell() {
     <input id="sellQ" type="search" placeholder="Search items (e.g. abaya, belt, 43)" value="${esc(S.sellQ)}" style="margin:12px 0" aria-label="Search items">
     <div class="items-grid">${its.map(r => `<button type="button" class="card-btn ${r.left <= 0 && !PO() ? 'out' : ''} ${bq[r.id] ? 'inb-on' : ''}" data-act="sale" data-id="${esc(r.id)}" ${S.canWrite ? '' : 'disabled'}>
       ${bq[r.id] ? `<span class="inb">${bq[r.id]} in basket</span>` : ''}${r.photo ? `<img src="${esc(r.photo)}" alt="" loading="lazy">` : `<span class="ph">${esc(r.code)}</span>`}
-      <span class="n">${esc(r.name)}</span><span class="small"><b style="color:var(--target)">${D(r.used)}</b> · <span class="muted">${PO() ? 'order' : r.left + ' left'}</span></span></button>`).join('') || '<div class="empty">No items match.</div>'}</div>
+      <span class="n">${esc(r.name)}</span><span class="small"><b style="color:var(--target)">${D(r.used)}</b> · <span class="muted">${PO() ? (itSea(r) ? 'order · by sea' : 'order') : r.left + ' left'}</span></span></button>`).join('') || '<div class="empty">No items match.</div>'}</div>
   </div>
   <div class="panel"><div class="spread"><h2>Recent sales</h2>${c.sales.length ? `<span class="muted small">${rq ? `${found.length} found` : `${recent.length} of ${c.sales.length}`}</span>` : ''}</div>
     ${c.sales.length ? `<input id="recentQ" type="search" placeholder="Find a sale: name, phone or receipt no." value="${esc(S.recentQ)}" style="margin:12px 0 0" aria-label="Find a sale">` : ''}
@@ -1035,7 +1061,7 @@ function saleSheet(itemId, saleId) {
   const disc0 = ex ? Math.max(0, Math.round(num(ex.qty) * num(ex.price) - num(ex.total))) : 0;
   const cu = ex ? custOf(ex) : null;
   const retQty = ex ? sum(ex.returns || [], x => num(x.qty)) : 0;
-  const body = `<div class="row" style="flex-wrap:nowrap">${img(r, 'thumb lg')}<div style="min-width:0"><div class="t" style="font-weight:700">${esc(r.name)}</div><div class="small muted">${esc(r.code)} · ${PO() ? esc(poArrive()) : (r.left + (ex ? num(ex.qty) : 0)) + ' in stock'}${r.sizes ? ' · ' + esc(r.sizes) : ''}</div></div></div>
+  const body = `<div class="row" style="flex-wrap:nowrap">${img(r, 'thumb lg')}<div style="min-width:0"><div class="t" style="font-weight:700">${esc(r.name)}</div><div class="small muted">${esc(r.code)} · ${PO() ? esc(poArrive(itWhen(r))) + (itSea(r) ? ' · ' + esc(SEA_LABEL) : '') : (r.left + (ex ? num(ex.qty) : 0)) + ' in stock'}${r.sizes ? ' · ' + esc(r.sizes) : ''}</div></div></div>
     ${priceTrio(r)}
     ${r.desc ? `<details><summary class="small" style="cursor:pointer;font-weight:700">Details for buyers</summary><p class="idesc" style="margin-top:6px">${esc(r.desc)}</p></details>` : ''}
     ${ex ? `<p class="small muted" style="margin:0">Receipt ${esc(ex.invoiceNo || '–')}${cu ? ' · customer ' + esc(cu.code) : ''} ${OWN() ? ` · profit on this sale <b>${D(num(ex.total) - num(ex.qty) * num(r.landed))}</b> (landed cost ${D(r.landed)} a piece)` : ''}${retQty ? ` · ${retQty} piece${retQty === 1 ? '' : 's'} returned` : ''}</p>` : ''}
@@ -1070,8 +1096,8 @@ function saleSheet(itemId, saleId) {
       $('#belowBox', sh).hidden = !below;
       $('#custReq', sh).textContent = PO() ? 'needed for an order' : ps.mode === 'Credit' ? 'required for credit' : 'optional';
       if (PO() && !keepHistory) {   // the deposit follows the total until it is typed by hand
-        const dp = poDep(t); if (ps.auto && ps.mode === 'Credit' && $('#sPaid', sh)) { ps.paid = dp; $('#sPaid', sh).value = dp; }
-        $('#sHint', sh).insertAdjacentHTML('beforeend', `<div style="margin-top:4px">Deposit ${P(PO_DEP())}: <b>${D(dp)}</b>${ps.mode === 'Credit' && num(ps.paid) < dp - 0.5 ? ` <span class="pill warn">Deposit paid now is below ${P(PO_DEP())}</span>` : ''} · ${esc(poArrive())}</div>`);
+        const dd = itDep(r), dp = depFor(t, dd); if (ps.auto && ps.mode === 'Credit' && $('#sPaid', sh)) { ps.paid = dp; $('#sPaid', sh).value = dp; }
+        $('#sHint', sh).insertAdjacentHTML('beforeend', `<div style="margin-top:4px">Deposit ${P(dd)}${itDepOwn(r) ? ' (this product)' : ''}: <b>${D(dp)}</b>${ps.mode === 'Credit' && num(ps.paid) < dp - 0.5 ? ` <span class="pill warn">Deposit paid now is below ${P(dd)}</span>` : ''} · ${esc(poArrive(itWhen(r)))}</div>`);
       }
     };
     sh.addEventListener('input', e => { if (e.target.id === 'sPaid') ps.auto = false; }, true);
@@ -1117,7 +1143,7 @@ function saleSheet(itemId, saleId) {
           logEvent('Edited a sale', ex.id, `${ex.name}${ex.invoiceNo ? ' · ' + ex.invoiceNo : ''}: ${ch.join(', ') || 'details'}`, ex); }
       } else {
         doc.createdAt = new Date().toISOString(); doc.by = S.uid || '';
-        if (PO()) doc.po = { status: 'new', at: { new: doc.createdAt } };
+        if (PO()) doc.po = { status: 'new', at: { new: doc.createdAt }, ...(itWhenOwn(r) ? { when: itWhenOwn(r) } : {}) };
         doc.invoiceNo = nextInvoiceNo(doc.date); doc.orderId = 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         let ref = null;
         ok = await write(async () => { ref = await S.db.collection('sales').add(doc); }, 'Sale saved: ' + D(t));
@@ -1492,8 +1518,8 @@ function backupTables() {
       Math.max(0, num(s.qty) * num(s.price) - num(s.total)), num(s.total), num(s.paid), num(s.total) - num(s.paid), s.payment || '', s.channel || '', sum(s.returns || [], x => num(x.qty)) || '', s.belowLowest ? 'yes' : '', s.note || '', s.id, ...(PO() ? [s.po ? poLabel(poSt(s)) : ''] : [])]));
   T.Customers = [['Customer ID', 'Name', 'Phone', 'Since', 'Purchases', 'Bought in total', 'Owes']].concat(S.customers.map(c => { const ss = custSales(c);
     return [c.code, c.name, c.phone || '', String(c.createdAt || '').slice(0, 10), new Set(ss.map(s => s.invoiceNo || s.id)).size, sum(ss, s => num(s.total)), sum(ss, s => num(s.total) - num(s.paid))]; }));
-  T.Items = [['Shipment', 'Code', 'Item', 'Group', 'Sizes', 'Bought', 'Sold', 'Stock changes', 'Left', 'China price (RMB)', 'Landed cost (D)', 'Target', 'Ask', 'Lowest', 'Price used', 'For sale', 'Details for buyers']];
-  S.ships.forEach(sh => calcShip(sh).items.forEach(r => T.Items.push([sh.name, r.code, r.name, r.group, r.sizes || '', r.qty, r.sold, r.adj || 0, r.left, num(r.rmb), Math.round(r.landed), r.target, r.ask, r.lowest, r.used, r.forSale ? 'yes' : 'no', r.desc || ''])));
+  T.Items = [['Shipment', 'Code', 'Item', 'Group', 'Sizes', 'Bought', 'Sold', 'Stock changes', 'Left', 'China price (RMB)', 'Landed cost (D)', 'Target', 'Ask', 'Lowest', 'Price used', 'For sale', 'Details for buyers', ...(PO() ? ['Own deposit (%)', 'Own arrival time', 'Made to order · by sea'] : [])]];
+  S.ships.forEach(sh => calcShip(sh).items.forEach(r => T.Items.push([sh.name, r.code, r.name, r.group, r.sizes || '', r.qty, r.sold, r.adj || 0, r.left, num(r.rmb), Math.round(r.landed), r.target, r.ask, r.lowest, r.used, r.forSale ? 'yes' : 'no', r.desc || '', ...(PO() ? [itDepOwn(r) ? Math.round(itDepOwn(r) * 100) : '', itWhenOwn(r), itSea(r) ? 'yes' : ''] : [])])));
   T.Shipments = [['Shipment', 'Status', 'Ordered', 'Arrived', 'Rate (D per RMB)', 'Goods (RMB)', 'Goods (D)', 'Import costs (D)', 'Expenses (D)', 'Sales (D)', 'Cash in (D)', 'Owed (D)']]
     .concat(S.ships.map(sh => { const c = calcShip(sh); return [sh.name, sh.status || '', sh.ordered || '', sh.arrived || '', +c.rate.toFixed(3), c.goodsRMB, Math.round(c.goodsGMD), Math.round(c.importCosts), Math.round(c.expenses), Math.round(c.salesValue), Math.round(c.cash), Math.round(c.owed)]; }));
   T.Expenses = [['Date', 'Category', 'Amount (D)', 'Paid with', 'Shipment', 'Note']].concat(S.expenses.slice().sort((a, b) => String(a.date).localeCompare(String(b.date))).map(e => [e.date, e.category, num(e.amount), e.method || 'Cash', shipName(e.ship) || 'Whole business', e.note || '']));
@@ -1694,12 +1720,12 @@ function ordersPanel() {
   const G = poGroups(), n = k => G.filter(g => g.status === k).length, open = G.filter(g => g.status !== 'collected');
   return `<div class="panel"><div class="spread"><h2>Orders</h2><button type="button" class="btn primary" data-act="orders">Open orders</button></div>
     <div class="kv" style="margin-top:10px">${PO_STEPS.slice(0, 4).map(([k, l]) => `<span>${esc(l)}</span><b>${n(k)}</b>`).join('')}</div>
-    <p class="note">Balances still to pay on open orders: <b>${D(sum(open, g => g.due))}</b>. Deposit ${P(PO_DEP())} · ${esc(poArrive())}.</p>
+    <p class="note">Balances still to pay on open orders: <b>${D(sum(open, g => g.due))}</b>. Deposit ${P(PO_DEP())} · ${esc(poArrive())}.${(k => k ? ` ${k} product${k === 1 ? ' has its' : 's have their'} own deposit or arrival time.` : '')(S.items.filter(i => i.forSale !== false && itOwnPo(i)).length)}</p>
     ${OWN() ? '<button type="button" class="btn ghost" data-act="poSet" style="margin-top:8px">Change the deposit % or arrival time</button>' : ''}</div>`;
 }
 function poReceiptLine(r) {
   const i = poIdx(r.po);
-  return `Order: ${poLabel(r.po)}${i < 3 ? ' · ' + poArrive() : ''}${r.due > 0.5 ? (i < 3 ? ` · balance ${D(r.due)} to pay when it arrives` : ` · balance ${D(r.due)} to pay on collection`) : ''}`;
+  return `Order: ${poLabel(r.po)}${i < 3 ? ' · ' + (r.poArr || poArrive()) : ''}${r.due > 0.5 ? (i < 3 ? ` · balance ${D(r.due)} to pay when it arrives` : ` · balance ${D(r.due)} to pay on collection`) : ''}`;
 }
 function poItems(g) { const nm = s => (S.items.find(i => i.id === s.itemId) || {}).name || s.name || ''; return g.list.filter(s => num(s.qty) > 0).map(s => `${s.qty} × ${nm(s)}${s.size ? ' (' + s.size + ')' : ''}`); }
 function poArrivedMsg(g) {
@@ -1713,7 +1739,7 @@ function poCard(g) {
   return `<div class="panel" style="margin:8px 0 0;padding:12px" data-pocard="${esc(g.k)}">
     <div class="spread"><div style="min-width:0"><b>${esc(g.customer || 'No name')}</b><div class="small muted">${[g.no, nice(g.date), g.phone].filter(Boolean).map(esc).join(' · ')}</div></div>
       <span class="pill ${g.status === 'arrived' ? 'warn' : g.status === 'collected' ? 'ok' : ''}">${esc(poLabel(g.status))}</span></div>
-    <div class="small" style="margin-top:6px">${poItems(g).map(esc).join('<br>') || 'All items returned'}</div>
+    <div class="small" style="margin-top:6px">${poItems(g).map(esc).join('<br>') || 'All items returned'}</div>${poIdx(g.status) < 3 ? `<div class="small muted" style="margin-top:2px">${esc((s => s.charAt(0).toUpperCase() + s.slice(1))(poArrFor(g.list)))}</div>` : ''}
     <div class="small" style="margin-top:4px">Total <b>${D(g.total)}</b> · paid ${D(g.paid)} · ${g.due > 0.5 ? `<b style="color:var(--warn)">balance ${D(g.due)}</b>` : '<b style="color:var(--target)">paid in full</b>'}</div>
     ${S.canWrite ? `<div class="fgrid" style="margin-top:8px">${next ? `<button type="button" class="btn primary" data-ponext="${esc(g.k)}">${esc(PO_STEPS[i][2])}</button>` : ''}${g.due > 0.5 ? `<button type="button" class="btn" data-popay="${esc(g.k)}">Record payment</button>` : ''}<button type="button" class="btn ghost" data-porcpt="${esc(g.list[0].id)}">Receipt</button>${tell}</div>
     <div class="confirm" data-pocf="${esc(g.k)}" hidden><p style="margin:0 0 8px">${esc(g.customer || 'The buyer')} still owes <b>${D(g.due)}</b>. Record the payment first, or mark the order as collected anyway (the balance stays in the Credit tab).</p><button type="button" class="btn danger" data-poyes="${esc(g.k)}">Mark as collected anyway</button></div>` : ''}</div>`;
@@ -1737,12 +1763,12 @@ function ordersSheet(filt) {
   // what to buy in China: the orders still waiting, by item and size
   const need = {};
   G.filter(g => g.status === 'new').forEach(g => g.list.forEach(s => { if (num(s.qty) <= 0) return; const it = S.items.find(i => i.id === s.itemId) || {}; const key = s.itemId + '|' + String(s.size || '').toLowerCase();
-    need[key] = need[key] || { code: it.code || s.code || '', name: it.name || s.name || '', size: s.size || '', qty: 0 }; need[key].qty += num(s.qty); }));
+    need[key] = need[key] || { code: it.code || s.code || '', name: it.name || s.name || '', size: s.size || '', qty: 0, sea: itSea(it) }; need[key].qty += num(s.qty); }));
   const needRows = Object.values(need).sort((a, b) => String(a.code).localeCompare(String(b.code)) || String(a.size).localeCompare(String(b.size)));
   const step = PO_STEPS.find(x => x[0] === filt);
   const body = `<div class="chips" id="poChips">${[['open', 'All open'], ...PO_STEPS].map(([k, l]) => `<button type="button" class="chip" data-pof="${k}" aria-pressed="${filt === k}">${esc(l)} (${cnt(k)})</button>`).join('')}</div>
     ${(filt === 'open' || filt === 'new') && needRows.length ? `<div class="alert info" style="margin-top:10px"><b class="i">i</b><div style="min-width:0;flex:1"><b>To order from China</b> (orders waiting)
-      <div class="list" style="margin-top:6px">${needRows.map(x => `<div class="spread small"><span>${esc(x.code)} ${esc(x.name)}${x.size ? ' · ' + esc(x.size) : ''}</span><b>${x.qty} pc${x.qty === 1 ? '' : 's'}</b></div>`).join('')}</div></div></div>` : ''}
+      <div class="list" style="margin-top:6px">${needRows.map(x => `<div class="spread small"><span>${esc(x.code)} ${esc(x.name)}${x.size ? ' · ' + esc(x.size) : ''}${x.sea ? ' · by sea' : ''}</span><b>${x.qty} pc${x.qty === 1 ? '' : 's'}</b></div>`).join('')}</div></div></div>` : ''}
     ${S.canWrite && step && step[2] && cnt(filt) > 1 ? `<button type="button" class="btn block" style="margin-top:10px" data-pomove="${filt}">${esc(step[2])}: all ${cnt(filt)} orders</button>` : ''}
     <div>${shown.map(poCard).join('') || '<div class="empty">No orders here.</div>'}</div>`;
   openSheet('Orders', body, sh => {
@@ -2073,9 +2099,12 @@ function basketSheet() {
   const disc = () => Math.max(0, num(f.discount));
   const total = () => Math.max(0, gross() - disc());
   const factor = () => gross() > 0 ? total() / gross() : 1;
+  // order stores: each product's deposit % on its share of the total, rounded up to D25 once
+  const bDep = () => Math.min(total(), ceilTo(sum(B, l => num(l.qty) * num(l.price) * factor() * itDep(itemRow(l.itemId))), 25));
+  const bPcts = () => [...new Set(B.map(l => itDep(itemRow(l.itemId))))];
   const linesHtml = () => B.map((l, i) => { const r = itemRow(l.itemId) || { name: '(item removed)', code: '', left: 0, target: 0, lowest: 0 };
     return `<div class="bline">
-      <div class="row" style="flex-wrap:nowrap">${img(r)}<div style="min-width:0;flex:1"><div class="t" style="font-weight:700;overflow-wrap:anywhere">${esc(r.name)}</div><div class="small muted">${PO() ? 'order' : r.left + ' in stock'} · target ${D(r.target)} · lowest ${D(r.lowest)}</div></div>
+      <div class="row" style="flex-wrap:nowrap">${img(r)}<div style="min-width:0;flex:1"><div class="t" style="font-weight:700;overflow-wrap:anywhere">${esc(r.name)}</div><div class="small muted">${PO() ? esc(poLineInfo(r)) : r.left + ' in stock'} · target ${D(r.target)} · lowest ${D(r.lowest)}</div></div>
         <button type="button" class="btn ghost" style="min-height:40px;padding:6px 10px" data-brm="${i}" aria-label="Remove ${esc(r.name)}">Remove</button></div>
       <div class="fgrid" style="grid-template-columns:1fr 1fr;gap:8px">
         <label class="f">Pieces<div class="stepper" style="grid-template-columns:40px 1fr 40px"><button type="button" data-bstep="-1" data-i="${i}" aria-label="One less">−</button><input data-bq="${i}" inputmode="numeric" value="${esc(l.qty)}"><button type="button" data-bstep="1" data-i="${i}" aria-label="One more">+</button></div></label>
@@ -2107,8 +2136,8 @@ function basketSheet() {
       $('#bTotal', sh).innerHTML = disc() > 0 ? `<span class="small muted" style="font-weight:400">${D(gross())} − ${D(disc())} =</span> ${D(total())}` : D(total());
       $('#bSave', sh).textContent = `${PO() ? 'Save order' : 'Save sale'}: ${pieces} piece${pieces === 1 ? '' : 's'}, ${D(total())}`;
       $('#bCustReq', sh).textContent = PO() ? 'needed for an order' : f.mode === 'Credit' ? 'required for credit' : 'optional';
-      if (PO()) { const dp = poDep(total()); if (f.auto && f.mode === 'Credit' && $('#bPaid', sh)) { f.paid = dp; $('#bPaid', sh).value = dp; }
-        $('#bTotal', sh).insertAdjacentHTML('beforeend', `<div class="small" style="font-weight:400">Deposit ${P(PO_DEP())}: <b>${D(dp)}</b>${f.mode === 'Credit' && num(f.paid) < dp - 0.5 ? ' <span class="pill warn">below the deposit</span>' : ''}</div>`); }
+      if (PO()) { const dp = bDep(), pcs = bPcts(); if (f.auto && f.mode === 'Credit' && $('#bPaid', sh)) { f.paid = dp; $('#bPaid', sh).value = dp; }
+        $('#bTotal', sh).insertAdjacentHTML('beforeend', `<div class="small" style="font-weight:400">Deposit ${pcs.length === 1 ? P(pcs[0]) : '(each product its own %)'}: <b>${D(dp)}</b>${f.mode === 'Credit' && num(f.paid) < dp - 0.5 ? ' <span class="pill warn">below the deposit</span>' : ''}</div>`); }
       $('#bBelow', sh).hidden = !B.some(isBelow);
     };
     sh.addEventListener('input', e => { if (e.target.id === 'bPaid') f.auto = false; }, true);
@@ -2167,7 +2196,7 @@ function basketSheet() {
         return { ship: r.ship, itemId: r.id, code: r.code, name: r.name, qty: num(l.qty), price: num(l.price), discount: dk, total: tot, paid, payment: pr.payment, payParts: parts, channel: f.channel,
           customer: cu ? cu.name : String(f.customer).trim(), phone: String(f.phone).trim(), customerId: cu ? cu.id : '', customerCode: cu ? cu.code : '', size: String(l.size || '').trim(), note: String(f.note).trim(), date,
           belowLowest: tot / num(l.qty) < r.lowest, lowestAtSale: r.lowest, targetAtSale: r.target, createdAt: new Date(t0 + k).toISOString(), by: S.uid || '',
-          payments: f.mode === 'Credit' && paid > 0 ? [{ date, amount: paid, method: f.paidBy || 'Cash' }] : [], invoiceNo: f.invoiceNo, orderId: f.orderId, ...(PO() ? { po: { status: 'new', at: { new: new Date(t0 + k).toISOString() } } } : {}) }; });
+          payments: f.mode === 'Credit' && paid > 0 ? [{ date, amount: paid, method: f.paidBy || 'Cash' }] : [], invoiceNo: f.invoiceNo, orderId: f.orderId, ...(PO() ? { po: { status: 'new', at: { new: new Date(t0 + k).toISOString() }, ...(itWhenOwn(r) ? { when: itWhenOwn(r) } : {}) } } : {}) }; });
       const saved = (f.saved = f.saved || []);
       for (let k = 0; k < docs.length; k++) {
         btn.textContent = `Saving ${k + 1} of ${docs.length}…`; let ref = null;
@@ -2420,7 +2449,7 @@ function itemSheet(itemId) {
   const info = it && it.forSale ? OWN() ? `${priceTrio(it)}<div class="kv small"><span>China price</span><b>${num(it.rmb)} RMB</b><span>Landed cost (used for target)</span><b>${D(it.landed)}</b><span>Own cost (used for lowest)</span><b>${D(it.own)}</b><span>Lowest = own cost + (${it.flSrc === 'item' ? 'this item' : it.flSrc === 'group' ? esc(it.group) : 'general'})</span><b>${P(it.fl)}</b><span>Markup (${it.mkSrc === 'item' ? 'this item' : esc(it.group)})</span><b>${P(it.mk)}</b>${num(it.finalPrice) > 0 ? `<span>Target from markup (not used: own selling price ${D(it.finalPrice)} is set)</span><b>${D(it.mkTarget)}</b>` : ''}<span>Sold / bought</span><b>${it.sold} / ${it.qty}</b></div>` : `${priceTrio(it)}<div class="kv small"><span>Sold / bought</span><b>${it.sold} / ${it.qty}</b></div>` : '';
   const ro = !OWN();
   const adjs = it ? S.adjustments.filter(a => a.itemId === it.id).sort((a, b) => String(b.date).localeCompare(String(a.date))) : [];
-  openSheet(it ? it.name : 'Add item', `${it ? `<div class="row" style="flex-wrap:nowrap">${img(it, 'thumb lg')}<div class="small muted">${esc(it.code)} · ${esc(it.group)}${it.sizes ? '<br>' + esc(it.sizes) : ''}</div></div>${it.catHide === true && it.forSale ? '<p class="small" style="margin:0"><span class="pill">Not in the public catalogue</span></p>' : ''}${it.desc ? `<div><h3 style="margin:0 0 4px">Details for buyers</h3><p class="idesc">${esc(it.desc)}</p></div>` : ''}` : ''}${info}
+  openSheet(it ? it.name : 'Add item', `${it ? `<div class="row" style="flex-wrap:nowrap">${img(it, 'thumb lg')}<div class="small muted">${esc(it.code)} · ${esc(it.group)}${it.sizes ? '<br>' + esc(it.sizes) : ''}</div></div>${it.catHide === true && it.forSale ? '<p class="small" style="margin:0"><span class="pill">Not in the public catalogue</span></p>' : ''}${PO() && (itSea(it) || itOwnPo(it)) ? `<p class="small" style="margin:0">${itSea(it) ? `<span class="pill">${esc(SEA_LABEL)}</span> ` : ''}${itOwnPo(it) ? esc(`This product: deposit ${P(itDep(it))} · ${poArrive(itWhen(it))}`) : ''}</p>` : ''}${it.desc ? `<div><h3 style="margin:0 0 4px">Details for buyers</h3><p class="idesc">${esc(it.desc)}</p></div>` : ''}` : ''}${info}
     ${it && it.forSale && S.canWrite ? `<button type="button" class="btn block" id="iAdj">Damaged, lost, given away or found? Record a stock change</button>` : ''}
     ${ro && S.canWrite ? '<p class="note" style="margin:0">Only the owner can change prices and item details.</p>' : ''}
     ${ro ? '' : `<form id="itF" class="list" style="gap:12px">
@@ -2428,6 +2457,10 @@ function itemSheet(itemId) {
       <div class="fgrid"><label class="f">Group<select id="iGroup">${groups.includes(v.group) || !v.group ? '' : `<option selected>${esc(v.group)}</option>`}${groups.map(g => `<option${g === v.group ? ' selected' : ''}>${esc(g)}</option>`).join('')}<option value="__new__">+ New group…</option></select></label>
         <label class="f">Sizes / colours<input id="iSizes" value="${esc(v.sizes)}"></label></div>
       <label class="f">Details for buyers <span class="h">optional, shown in the public catalogue: model, size, what is included… (up to 1000 letters)</span><textarea id="iDesc" rows="4" maxlength="1000" placeholder="e.g. Core i5, 8 GB RAM, 256 GB SSD, 14-inch screen, charger included">${esc(v.desc || '')}</textarea></label>
+      ${PO() ? `<div class="f cpbox"><b>Ordering this product</b><span class="h">optional, only for this product; empty = the store's deposit (${P(PO_DEP())}) and arrival time (${esc(PO_WHEN() ? 'about ' + PO_WHEN() : 'not set')}). Shown in Take an order, on receipts and in the public catalogue.</span>
+        <div class="fgrid"><label class="f">Deposit (%)<input id="iDep" inputmode="numeric" maxlength="4" value="${itDepOwn(v) ? Math.round(itDepOwn(v) * 100) : ''}" placeholder="${Math.round(PO_DEP() * 100)}"></label>
+          <label class="f">Arrives in about<input id="iWhen" maxlength="40" value="${esc(itWhenOwn(v))}" placeholder="${esc(PO_WHEN() || 'e.g. 10 to 12 weeks')}"></label></div>
+        <label class="row" style="flex-wrap:nowrap"><input type="checkbox" id="iSea" style="width:22px;min-height:22px" ${itSea(v) ? 'checked' : ''}> Show the label "${esc(SEA_LABEL)}" (big or heavy products)</label></div>` : ''}
       <div class="fgrid" id="iNewG" hidden><label class="f">New group name<input id="iNgName" placeholder="e.g. Watches"></label><label class="f">Markup for this group (%)<input id="iNgMk" inputmode="decimal" value="${Math.round((num(st.defaultMarkup) || 0.45) * 100)}"></label></div>
       <div class="fgrid"><label class="f">Pieces bought<input id="iQty" inputmode="numeric" value="${esc(v.qty)}"></label><label class="f">China price per piece (RMB)<input id="iRmb" inputmode="decimal" value="${esc(v.rmb)}"></label></div>
       <div class="fgrid"><label class="f">Market price seen (D) <span class="h">optional</span><input id="iMkt" inputmode="decimal" value="${esc(v.market || '')}"></label>
@@ -2516,6 +2549,13 @@ function itemSheet(itemId) {
         markupPct: String($('#iMk', sh).value).trim() === '' ? null : num($('#iMk', sh).value) / 100,
         desc: String($('#iDesc', sh).value).replace(/\r\n?/g, '\n').trim().slice(0, 1000) };
       if ($('#iCat', sh)) d.catHide = !$('#iCat', sh).checked; else if (it && it.catHide) d.catHide = it.catHide;
+      if ($('#iDep', sh)) {   // order store: the owner's own deposit % / arrival time / label for this product (empty = the store's)
+        const ds = String($('#iDep', sh).value).replace('%', '').trim(), dv = Math.round(num(ds));
+        if (ds !== '' && !(dv >= 10 && dv <= 100)) return toast('Write a deposit from 10 to 100 %, or leave it empty to use the store\'s.');
+        if (ds !== '') d.poDep = dv / 100;
+        const w = String($('#iWhen', sh).value).replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, 40); if (w) d.poWhen = w;
+        if ($('#iSea', sh).checked) d.bySea = true;
+      } else if (it) { if (it.poDep != null) d.poDep = it.poDep; if (it.poWhen) d.poWhen = it.poWhen; if (it.bySea) d.bySea = it.bySea; }   // a shop with stock keeps them as they are
       if (it && it.note) d.note = it.note;
       if (d.markupPct != null && !(d.markupPct >= 0)) return toast('Write the markup as a number, e.g. 60.');
       if (!d.name) return toast('Give the item a name.');
@@ -2528,7 +2568,7 @@ function itemSheet(itemId) {
         catch (err) { btn.disabled = false; btn.textContent = it ? 'Save item' : 'Add item'; return toast('The catalogue photos could not be saved' + (err && err.code === 'unavailable' ? ' (no internet)' : '') + '. Nothing was changed. Try again with internet.', 6000); }
         btn.disabled = false; btn.textContent = it ? 'Save item' : 'Add item';
       }
-      const ok = await write(() => S.db.doc('items/' + id).set(d), it ? 'Item saved' : 'Item added'); if (ok) logEvent(it ? 'Changed an item' : 'Added an item', id, `${d.code} ${d.name}${it && String(it.desc || '') !== d.desc ? ' · details ' + (d.desc ? 'changed' : 'removed') : !it && d.desc ? ' · with details' : ''}${cpSaved ? ` · catalogue photos: ${cp.length}` : ''}${it && !!it.catHide !== !!d.catHide ? (d.catHide ? ' · taken off the catalogue' : ' · back on the catalogue') : !it && d.catHide ? ' · not in the catalogue' : ''}${it && num(it.finalPrice) !== num(d.finalPrice) ? ` · own price ${d.finalPrice ? D(d.finalPrice) : 'removed'}` : ''}${it && String(it.markupPct ?? '') !== String(d.markupPct ?? '') ? ` · markup ${d.markupPct == null ? 'back to group %' : Math.round(d.markupPct * 100) + '%'}` : ''}${it && String(it.floorPct ?? '') !== String(d.floorPct ?? '') ? ` · lowest ${d.floorPct == null ? 'back to group %' : '+' + Math.round(d.floorPct * 100) + '%'}` : ''}`);
+      const ok = await write(() => S.db.doc('items/' + id).set(d), it ? 'Item saved' : 'Item added'); if (ok) logEvent(it ? 'Changed an item' : 'Added an item', id, `${d.code} ${d.name}${poItemLog(it, d)}${it && String(it.desc || '') !== d.desc ? ' · details ' + (d.desc ? 'changed' : 'removed') : !it && d.desc ? ' · with details' : ''}${cpSaved ? ` · catalogue photos: ${cp.length}` : ''}${it && !!it.catHide !== !!d.catHide ? (d.catHide ? ' · taken off the catalogue' : ' · back on the catalogue') : !it && d.catHide ? ' · not in the catalogue' : ''}${it && num(it.finalPrice) !== num(d.finalPrice) ? ` · own price ${d.finalPrice ? D(d.finalPrice) : 'removed'}` : ''}${it && String(it.markupPct ?? '') !== String(d.markupPct ?? '') ? ` · markup ${d.markupPct == null ? 'back to group %' : Math.round(d.markupPct * 100) + '%'}` : ''}${it && String(it.floorPct ?? '') !== String(d.floorPct ?? '') ? ` · lowest ${d.floorPct == null ? 'back to group %' : '+' + Math.round(d.floorPct * 100) + '%'}` : ''}`);
       if (ok) closeSheet();
     });
     const del = $('#iDel', sh); if (del) del.onclick = () => { if (hist.length || S.adjustments.some(a => a.itemId === it.id)) purgeSheet(null, [it.id]); else $('#iDelBox', sh).hidden = false; };
@@ -2817,7 +2857,7 @@ function receiptData(saleId, fresh) {
   const status = total <= 0.5 && returns.length ? 'returned' : due <= 0.5 ? 'paid' : paid > 0.5 ? 'part' : 'unpaid';
   const no = s.invoiceNo || group.find(x => x.invoiceNo)?.invoiceNo || ('R-' + String(s.date).replace(/-/g, '') + '-' + String(s.id).slice(-4).toUpperCase());
   return { no, date: s.date, time: saleTime(group[0]), customer: cu ? cu.name : (s.customer || ''), phone: (cu && cu.phone) || s.phone || (group.find(x => x.phone) || {}).phone || '', custCode: cu ? cu.code : (s.customerCode || ''),
-    lines, returns, subtotal, discount, total, paid, due, status, po: group.some(x => x.po) ? group.filter(x => x.po).reduce((lo, x) => poIdx(poSt(x)) < poIdx(lo) ? poSt(x) : lo, 'collected') : '', kind: status === 'returned' ? 'RETURN RECEIPT' : group.some(x => x.po) && status !== 'paid' ? 'ORDER RECEIPT' : status === 'paid' ? 'SALES RECEIPT' : 'INVOICE', pays: [...methods].join(', '), payHist: payHist.length > 1 ? payHist : [], count: group.length };
+    lines, returns, subtotal, discount, total, paid, due, status, po: group.some(x => x.po) ? group.filter(x => x.po).reduce((lo, x) => poIdx(poSt(x)) < poIdx(lo) ? poSt(x) : lo, 'collected') : '', kind: status === 'returned' ? 'RETURN RECEIPT' : group.some(x => x.po) && status !== 'paid' ? 'ORDER RECEIPT' : status === 'paid' ? 'SALES RECEIPT' : 'INVOICE', poArr: group.some(x => x.po) ? poArrFor(group) : '', pays: [...methods].join(', '), payHist: payHist.length > 1 ? payHist : [], count: group.length };
 }
 function drawReceipt(r, mode, logo) {
   const st = ST(), narrow = mode === 'narrow';

@@ -51,6 +51,8 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
 .ph img{width:100%;height:100%;object-fit:cover;display:block}
 .body{padding:10px 12px 12px;display:flex;flex-direction:column;gap:6px;flex:1}
 .nm{font-weight:700;line-height:1.25;overflow-wrap:anywhere}
+.tag{align-self:flex-start;justify-self:start;font-size:12px;font-weight:700;color:#6b4100;background:#fdf0d5;border:1px solid #f3d9a4;border-radius:8px;padding:2px 9px;line-height:1.4}
+.card .tag{font-size:11px;padding:1px 7px}
 .sz{font-size:13px;color:var(--muted)}
 .pr{display:grid;gap:4px;margin-top:auto}
 .pr>div{display:flex;justify-content:space-between;align-items:baseline;gap:6px;border-radius:9px;padding:5px 8px}
@@ -165,9 +167,9 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
       var ph = x.photo ? '<img src="' + esc(x.photo) + '" alt="' + esc(x.name) + '" loading="lazy">' : esc(x.code || '');
       var askLink = wa ? '<a class="ask" href="' + askUrl(x) + '" target="_blank" rel="noopener">Ask us</a>' : '';
       var n = 1 + (Number(x.more) || 0);
-      return '<article class="card"><div class="ph tap" data-i="' + i + '">' + ph + (x.photo && n > 1 ? '<span class="badge">' + n + ' photos</span>' : '') + (x.vid ? '<span class="badge vb">▶ video</span>' : '') + '</div><div class="body"><div class="nm">' + esc(x.name) + '</div>' +
+      return '<article class="card"><div class="ph tap" data-i="' + i + '">' + ph + (x.photo && n > 1 ? '<span class="badge">' + n + ' photos</span>' : '') + (x.vid ? '<span class="badge vb">▶ video</span>' : '') + '</div><div class="body">' + (sea(x) ? '<span class="tag">' + SEA + '</span>' : '') + '<div class="nm">' + esc(x.name) + '</div>' +
         '<div class="pr"><div class="p-price"><div class="k">Price</div><div class="v">' + D(x.price) + '</div></div></div>' +
-        (ord() ? '<div class="dep">Deposit <b>' + D(depOf(x)) + '</b> (' + pct() + ')</div>' : '') +
+        (ord() ? '<div class="dep">Deposit <b>' + D(depOf(x)) + '</b> (' + pct(x) + ')' + (whenOwn(x) ? '<br>Arrives in about ' + esc(whenOwn(x)) : '') + '</div>' : '') +
         '<button type="button" class="more" data-i="' + i + '">Details</button>' +
         '<div class="foot"><span class="left">' + esc(leftText(x)) + '</span>' + askLink + '</div></div></article>';
     }).join('') + '</div>';
@@ -175,8 +177,14 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
   // pieces left as the owner chose: the number, "In stock", or "Only N left" when few (the server leaves hidden numbers out)
   // a pre-order store: the reply carries {deposit, arrive}; the deposit is rounded up to D25 like in the Shop Book
   function ord() { var o = data && data.order; return o && Number(o.deposit) > 0 && Number(o.deposit) <= 1 ? o : null; }
-  function pct() { return Math.round(Number(ord().deposit) * 100) + '%'; }
-  function depOf(x) { var p = Number(x.price) || 0; return Math.min(p, Math.ceil(p * Number(ord().deposit) / 25 - 1e-9) * 25); }
+  // a product may have its own deposit (dep) and arrival time (when), and the label "Made to order · by sea" (sea)
+  var SEA = 'Made to order · by sea';
+  function depPct(x) { var d = Number(x && x.dep); return d >= 0.1 && d <= 1 ? d : Number(ord().deposit); }
+  function pct(x) { return Math.round(depPct(x) * 100) + '%'; }
+  function depOf(x) { var p = Number(x.price) || 0; return Math.min(p, Math.ceil(p * depPct(x) / 25 - 1e-9) * 25); }
+  function whenOwn(x) { return ord() && typeof x.when === 'string' ? x.when.trim().slice(0, 40) : ''; }
+  function whenOf(x) { return whenOwn(x) || ord().arrive || ''; }
+  function sea(x) { return !!(ord() && x.sea === true); }
   function leftText(x) {
     if (ord()) return 'Order now';
     var n = Number(x.left);
@@ -194,10 +202,10 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
     var wa = waNum(data.phone), more = Number(x.more) || 0; showing = x;
     $('dlg').innerHTML = '<div class="top"><button type="button" class="x" id="dlgX" aria-label="Close">✕</button></div>' +
       (x.photo || more || x.vid ? '<div class="gal" id="gal"><div class="track" id="track"></div><button type="button" class="gnav prev" id="gPrev" aria-label="Previous photo">‹</button><button type="button" class="gnav next" id="gNext" aria-label="Next photo">›</button><span class="gcount" id="gCount" hidden></span></div>' : '') +
-      '<div class="in"><h2 id="dlgT">' + esc(x.name) + '</h2>' +
+      '<div class="in">' + (sea(x) ? '<span class="tag">' + SEA + '</span>' : '') + '<h2 id="dlgT">' + esc(x.name) + '</h2>' +
       (x.code ? '<div class="sz">' + esc(x.code) + '</div>' : '') +
       '<div class="pr"><div class="p-price"><div class="k">Price</div><div class="v">' + D(x.price) + '</div></div></div>' +
-      (ord() ? '<div class="howto"><b>How ordering works</b><br>Pay a deposit of ' + D(depOf(x)) + ' (' + pct() + ') to order. We order it from China for you' + (ord().arrive ? '; it arrives in about ' + esc(ord().arrive) : '') + '. Pay the rest (' + D(Number(x.price) - depOf(x)) + ') when it arrives.</div>' : '<div class="left">' + esc(leftText(x)) + '</div>') +
+      (ord() ? '<div class="howto"><b>How ordering works</b><br>' + (sea(x) ? 'This product is made to order and comes by sea. ' : '') + 'Pay a deposit of ' + D(depOf(x)) + ' (' + pct(x) + ') to order. We order it from China for you' + (whenOf(x) ? '; it arrives in about ' + esc(whenOf(x)) : '') + '. Pay the rest (' + D(Number(x.price) - depOf(x)) + ') when it arrives.</div>' : '<div class="left">' + esc(leftText(x)) + '</div>') +
       (x.sizes ? '<h3>Sizes / colours</h3><p class="txt">' + esc(x.sizes) + '</p>' : '') +
       (x.desc ? '<h3>Details</h3><p class="txt">' + esc(x.desc) + '</p>' : '') +
       (wa ? '<a class="askbig" href="' + askUrl(x) + '" target="_blank" rel="noopener">' + (ord() ? 'Order this on WhatsApp' : 'Ask about this on WhatsApp') + '</a>' : '') + '</div>';
