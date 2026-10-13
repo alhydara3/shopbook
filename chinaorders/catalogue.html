@@ -141,7 +141,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
     var lg = typeof data.logo === 'string' && /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+\/=]+$/.test(data.logo) ? data.logo : '';
     $('logo').hidden = !lg; if (lg) { $('logo').src = lg; $('logo').alt = name + ' logo'; var fi = document.querySelector('link[rel=icon]'); if (fi) fi.href = lg; } else $('logo').removeAttribute('src');
     // a pre-order store: its standard footer explains the deposit (the owner's own footer still wins)
-    if (ord() && !(typeof data.footer === 'string' && data.footer.trim())) $('foot').textContent = 'Prices in Dalasi. We order from China for you: pay ' + pct() + ' to order and the rest when it arrives' + (ord().arrive ? ' (about ' + ord().arrive + ')' : '') + '.';
+    if (ord() && !(typeof data.footer === 'string' && data.footer.trim())) $('foot').textContent = full() ? 'Prices in Dalasi. We order from China for you: pay the price to order' + (ord().arrive ? '; it arrives in about ' + ord().arrive : '') + '.' : 'Prices in Dalasi. We order from China for you: pay ' + pct() + ' to order and the rest when it arrives' + (ord().arrive ? ' (about ' + ord().arrive + ')' : '') + '.';
     if (typeof data.footer === 'string' && data.footer.trim()) $('foot').textContent = data.footer.trim().slice(0, 300);   // the owner's text; otherwise the standard sentence stays
     if (data.off) { $('tools').hidden = true; $('count').textContent = ''; $('out').innerHTML = '<div class="msg">This catalogue is closed right now.</div>'; return; }
     var when = data.at ? new Date(data.at).toLocaleString('en-GB', { timeZone: 'Africa/Banjul', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
@@ -169,7 +169,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
       var n = 1 + (Number(x.more) || 0);
       return '<article class="card"><div class="ph tap" data-i="' + i + '">' + ph + (x.photo && n > 1 ? '<span class="badge">' + n + ' photos</span>' : '') + (x.vid ? '<span class="badge vb">▶ video</span>' : '') + '</div><div class="body">' + (sea(x) ? '<span class="tag">' + SEA + '</span>' : '') + '<div class="nm">' + esc(x.name) + '</div>' +
         '<div class="pr"><div class="p-price"><div class="k">Price</div><div class="v">' + D(x.price) + '</div></div></div>' +
-        (ord() ? '<div class="dep">Deposit <b>' + D(depOf(x)) + '</b> (' + pct(x) + ')' + (whenOwn(x) ? '<br>Arrives in about ' + esc(whenOwn(x)) : '') + '</div>' : '') +
+        (ord() ? (full(x) ? (whenOwn(x) ? '<div class="dep">Arrives in about ' + esc(whenOwn(x)) + '</div>' : '') : '<div class="dep">Deposit <b>' + D(depOf(x)) + '</b> (' + pct(x) + ')' + (whenOwn(x) ? '<br>Arrives in about ' + esc(whenOwn(x)) : '') + '</div>') : '') +
         '<button type="button" class="more" data-i="' + i + '">Details</button>' +
         '<div class="foot"><span class="left">' + esc(leftText(x)) + '</span>' + askLink + '</div></div></article>';
     }).join('') + '</div>';
@@ -182,6 +182,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
   function depPct(x) { var d = Number(x && x.dep); return d >= 0.1 && d <= 1 ? d : Number(ord().deposit); }
   function pct(x) { return Math.round(depPct(x) * 100) + '%'; }
   function depOf(x) { var p = Number(x.price) || 0; return Math.min(p, Math.ceil(p * depPct(x) / 25 - 1e-9) * 25); }
+  function full(x) { return depPct(x) >= 0.999; }   // 100% = full payment: only the price is shown
   function whenOwn(x) { return ord() && typeof x.when === 'string' ? x.when.trim().slice(0, 40) : ''; }
   function whenOf(x) { return whenOwn(x) || ord().arrive || ''; }
   function sea(x) { return !!(ord() && x.sea === true); }
@@ -205,7 +206,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
       '<div class="in">' + (sea(x) ? '<span class="tag">' + SEA + '</span>' : '') + '<h2 id="dlgT">' + esc(x.name) + '</h2>' +
       (x.code ? '<div class="sz">' + esc(x.code) + '</div>' : '') +
       '<div class="pr"><div class="p-price"><div class="k">Price</div><div class="v">' + D(x.price) + '</div></div></div>' +
-      (ord() ? '<div class="howto"><b>How ordering works</b><br>' + (sea(x) ? 'This product is made to order and comes by sea. ' : '') + 'Pay a deposit of ' + D(depOf(x)) + ' (' + pct(x) + ') to order. We order it from China for you' + (whenOf(x) ? '; it arrives in about ' + esc(whenOf(x)) : '') + '. Pay the rest (' + D(Number(x.price) - depOf(x)) + ') when it arrives.</div>' : '<div class="left">' + esc(leftText(x)) + '</div>') +
+      (ord() ? '<div class="howto"><b>How ordering works</b><br>' + (sea(x) ? 'This product is made to order and comes by sea. ' : '') + (full(x) ? 'Pay the full price (' + D(x.price) + ') to order. We order it from China for you' + (whenOf(x) ? '; it arrives in about ' + esc(whenOf(x)) : '') + '.' : 'Pay a deposit of ' + D(depOf(x)) + ' (' + pct(x) + ') to order. We order it from China for you' + (whenOf(x) ? '; it arrives in about ' + esc(whenOf(x)) : '') + '. Pay the rest (' + D(Number(x.price) - depOf(x)) + ') when it arrives.') + '</div>' : '<div class="left">' + esc(leftText(x)) + '</div>') +
       (x.sizes ? '<h3>Sizes / colours</h3><p class="txt">' + esc(x.sizes) + '</p>' : '') +
       (x.desc ? '<h3>Details</h3><p class="txt">' + esc(x.desc) + '</p>' : '') +
       (wa ? '<a class="askbig" href="' + askUrl(x) + '" target="_blank" rel="noopener">' + (ord() ? 'Order this on WhatsApp' : 'Ask about this on WhatsApp') + '</a>' : '') + '</div>';
