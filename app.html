@@ -216,7 +216,7 @@ const BIZ = () => ST().business || APP.biz;
 const TOWN = () => (ST().town != null ? ST().town : APP.town) || '';
 const SELLER = () => ST().seller || APP.seller || 'the seller';
 const PLACE = () => TOWN() || 'the shop';
-const EXP_CATS_F = () => ['Shop rent', 'Transport / delivery', 'Phone & data', 'Shop setup', SELLER() + "'s pay", 'Packaging', 'Other'];
+const EXP_CATS_F = () => ['Shop rent', 'Electricity', 'Transport / delivery', 'Phone & data', 'Shop setup', SELLER() + "'s pay", 'Packaging', 'Other'];
 const DEFAULT_SETTINGS = {business:'',  markups:{'General':0.45,'Shop equipment':0}, bargain:0.15, floor:0.25, step:50, floorStep:25,
   nextOrder:{festival:'', festivalDate:'', daysBefore:21, leadDays:70, bufferDays:10, note:''}};
 
@@ -1487,7 +1487,7 @@ function backupPanel() {
 }
 
 /* ---------- WhatsApp credit reminders ---------- */
-function waNumber(p) { let d = String(p || '').replace(/\D/g, ''); if (!d) return ''; if (d.startsWith('00')) d = d.slice(2); if (d.length === 7) d = '220' + d; return d; }
+function waNumber(p) { let d = String(p || '').replace(/\D/g, ''); if (!d) return ''; if (d.startsWith('00')) d = d.slice(2); if (d.length === 7 || (d.length === 9 && d.startsWith('8'))) d = '220' + d; return d; }
 function lastReminder(k) { return S.log.filter(e => e.action === 'Credit reminder' && e.ref === k).reduce((m, e) => e.at > m ? e.at : m, ''); }
 function remindSheet(k) {
   const list = S.sales.filter(s => num(s.total) - num(s.paid) > 0.5 && debtKey(s) === k); if (!list.length) return;
@@ -2634,8 +2634,8 @@ function receiptWhatsApp(sh, r, cv, logo) {
   const fileName = k => `Receipt-${r.no}${k === 'pdf' ? '-80mm.pdf' : '.png'}`;
   const num = () => { const d = waNumber(numIn.value.trim()); return d.length >= 10 && d.length <= 15 ? d : ''; };
   const refresh = () => {
-    const d = num(), raw = numIn.value.trim(), pretty = d.length === 10 && d.startsWith('220') ? `+220 ${d.slice(3, 6)} ${d.slice(6)}` : '+' + d;
-    to.innerHTML = d ? `Buyer: <b>${esc(pretty)}</b>` : raw ? '<span style="color:var(--bad,#b3261e)">Check the number: 7 digits for a Gambian number, or start with the country code (e.g. 00221…).</span>' : 'No number for this buyer: you will pick the contact in WhatsApp.';
+    const d = num(), raw = numIn.value.trim(), pretty = d.startsWith('220') && d.length === 10 ? `+220 ${d.slice(3, 6)} ${d.slice(6)}` : d.startsWith('220') && d.length === 12 ? `+220 ${d.slice(3, 6)} ${d.slice(6, 9)} ${d.slice(9)}` : '+' + d;
+    to.innerHTML = d ? `Buyer: <b>${esc(pretty)}</b>` : raw ? '<span style="color:var(--bad,#b3261e)">Use 7 digits for an old Gambian number, or 9 digits starting with 8 for a new one. You can also include the country code (e.g. 00220…).</span>' : 'No number for this buyer: you will pick the contact in WhatsApp.';
     wa.href = `https://wa.me/${d}?text=${encodeURIComponent(receiptHello(r))}`;
     wa.textContent = d ? "2. Open the buyer's chat" : '2. Open WhatsApp';
     txt.href = `https://wa.me/${d}?text=${encodeURIComponent(receiptText(r))}`;
@@ -2672,7 +2672,7 @@ function receiptSheet(saleId, fresh) {
     <div class="wasend" style="display:grid;gap:8px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--surface)">
       <b>Send to the buyer on WhatsApp</b>
       <div class="seg" role="group" aria-label="Send as"><button type="button" data-rk="png" aria-pressed="true">Picture</button><button type="button" data-rk="pdf" aria-pressed="false">PDF (80 mm)</button></div>
-      <label class="f">Buyer's WhatsApp number <span class="h">${r.phone ? 'from the sale' : 'type it if you have it'}</span><input id="rcNum" inputmode="tel" value="${esc(r.phone || '')}" placeholder="e.g. 7012345"></label>
+      <label class="f">Buyer's WhatsApp number <span class="h">${r.phone ? 'from the sale' : 'type it if you have it'}</span><input id="rcNum" inputmode="tel" value="${esc(r.phone || '')}" placeholder="e.g. 7012345 or 835133853"></label>
       <p class="small muted" style="margin:0" id="rcTo"></p>
       <div id="rcOne" style="display:grid;gap:8px" hidden><button type="button" class="btn primary lg block" id="rcShare" disabled>Preparing the receipt…</button><p class="note" style="margin:0" id="rcOneHow"></p></div>
       <div id="rcTwo" style="display:grid;gap:8px" hidden>
