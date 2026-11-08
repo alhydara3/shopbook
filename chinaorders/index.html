@@ -2643,10 +2643,7 @@ function itemSheet(itemId) {
     const pst = $('#iPoster', sh); if (pst) pst.onclick = () => { try { posterSheetFor(it); } catch (err) { toast('Could not open the poster: ' + String((err && err.message) || err).slice(0, 120)); } };
     const f = $('#itF', sh); if (!f) return;
     let photo = v.photo || '';
-    $('#iPhoto', sh).addEventListener('change', async e => { const file = e.target.files[0]; if (!file) return; try { photo = await shrink(file); toast('Photo ready');
-      // one photo gives both: the small one for the lists and the same picture, large, as the first catalogue photo (only when there is none yet)
-      if (HOST() && HOST().photos && cpOk && !cp.length) { try { cp.unshift(await bigPhoto(file)); cpChanged = true; cpDraw(); toast('Photo ready (also as the first catalogue photo)'); } catch {} }
-    } catch { toast('Could not read that photo.'); } });
+    $('#iPhoto', sh).addEventListener('change', async e => { const file = e.target.files[0]; if (!file) return; try { photo = await shrink(file); toast('Photo ready'); } catch { toast('Could not read that photo.'); } });
     // catalogue photos: loaded from the server when the item opens; saved (before the item) only if changed
     let cp = [], cpOk = !it, cpChanged = false, cpSaved = false;
     const cpList = $('#cpList', sh), cpAdd = $('#cpAdd', sh);

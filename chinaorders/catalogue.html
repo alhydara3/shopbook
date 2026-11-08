@@ -166,7 +166,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
     $('out').innerHTML = '<div class="grid">' + list.map(function (x, i) {
       var ph = x.photo ? '<img src="' + esc(x.photo) + '" alt="' + esc(x.name) + '" loading="lazy">' : esc(x.code || '');
       var askLink = wa ? '<a class="ask" href="' + askUrl(x) + '" target="_blank" rel="noopener">Ask us</a>' : '';
-      var n = (Number(x.more) || 0) || 1;
+      var n = 1 + (Number(x.more) || 0);
       return '<article class="card"><div class="ph tap" data-i="' + i + '">' + ph + (x.photo && n > 1 ? '<span class="badge">' + n + ' photos</span>' : '') + (x.vid ? '<span class="badge vb">▶ video</span>' : '') + '</div><div class="body">' + (sea(x) ? '<span class="tag">' + SEA + '</span>' : '') + '<div class="nm">' + esc(x.name) + '</div>' +
         '<div class="pr"><div class="p-price"><div class="k">Price</div><div class="v">' + D(x.price) + '</div></div></div>' +
         (ord() ? (full(x) ? (whenOwn(x) ? '<div class="dep">Arrives in about ' + esc(whenOwn(x)) + '</div>' : '') : '<div class="dep">Deposit <b>' + D(depOf(x)) + '</b> (' + pct(x) + ')' + (whenOwn(x) ? '<br>Arrives in about ' + esc(whenOwn(x)) : '') + '</div>') : '') +
@@ -275,7 +275,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
   // the photos of one product: the main one, then the catalogue photos (swipe, or the arrows on a computer)
   function drawGallery(x) {
     var tr = $('track'); if (!tr) return;
-    var more = Number(x.more) || 0, got = extra[x.pid], list = (got && got.length) ? got : (x.photo ? [x.photo] : []);   // the large photos replace the small one once they are loaded
+    var more = Number(x.more) || 0, got = extra[x.pid], list = (x.photo ? [x.photo] : []).concat(got || []);   // the main photo first, then the catalogue photos
     var slides = list.map(function (src, k) { return '<div class="slide"><img src="' + esc(src) + '" alt="' + esc(x.name) + ' photo ' + (k + 1) + '"></div>'; });
     if (more && got === undefined) slides.push('<div class="slide wait">Loading more photos…</div>');
     if (more && got === null) slides.push('<div class="slide wait">More photos could not be loaded. Check the internet.</div>');
