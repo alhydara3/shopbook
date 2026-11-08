@@ -2248,7 +2248,7 @@ function itemSheet(itemId) {
       <label class="row" style="flex-wrap:nowrap"><input type="checkbox" id="iSale" style="width:22px;min-height:22px" ${v.forSale !== false ? 'checked' : ''}> For sale (untick for shop equipment like mannequins)</label>
       ${HOST() ? `<label class="row" style="flex-wrap:nowrap"><input type="checkbox" id="iCat" style="width:22px;min-height:22px" ${v.catHide !== true ? 'checked' : ''}> Show in the public catalogue (untick to keep this item off the catalogue)</label>` : ''}
       <label class="f">Photo <span class="h">optional, the small photo used everywhere in the Shop Book</span><input id="iPhoto" type="file" accept="image/*"></label>
-      ${HOST() ? `<div class="f cpbox"><b>Catalogue photos</b><span class="h">optional, up to ${CP_MAX} bigger photos shown only in the public catalogue (Details). Needs internet.</span>
+      ${HOST() ? `<div class="f cpbox"><b>Catalogue photos</b><span class="h">optional, up to ${cpMax()} bigger photos shown only in the public catalogue (Details). Needs internet.</span>
         ${HOST().photos ? `<div id="cpList" class="cpl"><span class="small muted">${it ? 'Loading…' : 'None yet.'}</span></div><input id="cpAdd" type="file" accept="image/*" multiple>` : '<p class="note" style="margin:4px 0 0">Add them from the installed Shop Book app (this web app needs its Index.html updated first).</p>'}</div>` : ''}
       ${HOST() ? `<div class="f cpbox"><b>Catalogue video</b><span class="h">optional, one per item, at most 30 seconds, shown only in the public catalogue (Details). It is made smaller on this phone, then sent: needs internet, keep the screen on.</span>
         ${!it ? '<p class="note" style="margin:4px 0 0">Save the item first, then open it again to add a video.</p>' : !HOST().video ? '<p class="note" style="margin:4px 0 0">Add it from the installed Shop Book app (this web app needs its Index.html updated first).</p>' : `<div id="cvNow" class="small muted">Loading…</div><input id="cvFile" type="file" accept="video/*"><div id="cvSt" class="small" hidden></div><div class="cvbar" id="cvBar" hidden><i></i></div><button type="button" class="btn block" id="cvSend" hidden>Make it smaller and send</button>`}</div>` : ''}
@@ -2262,21 +2262,26 @@ function itemSheet(itemId) {
     const pst = $('#iPoster', sh); if (pst) pst.onclick = () => { try { posterSheetFor(it); } catch (err) { toast('Could not open the poster: ' + String((err && err.message) || err).slice(0, 120)); } };
     const f = $('#itF', sh); if (!f) return;
     let photo = v.photo || '';
-    $('#iPhoto', sh).addEventListener('change', async e => { const file = e.target.files[0]; if (!file) return; try { photo = await shrink(file); toast('Photo ready'); } catch { toast('Could not read that photo.'); } });
+    $('#iPhoto', sh).addEventListener('change', async e => { const file = e.target.files[0]; if (!file) return; try { photo = await shrink(file); toast('Photo ready');
+      // pre-order store: the same picture, large, is kept as the first catalogue photo (the catalogue then shows the large one, not the small one)
+      if (PO() && HOST() && HOST().photos && cpOk) { try { const big = await bigPhoto(file);
+        if (hd && cp.length) { cp[0] = big; cpChanged = true; cpDraw(); } else if (cp.length < cpMax()) { cp.unshift(big); hd = true; cpChanged = true; cpDraw(); }
+        else toast('The small photo is saved. The large copy needs a free catalogue photo slot: remove one first.', 6000); } catch {} }
+    } catch { toast('Could not read that photo.'); } });
     // catalogue photos: loaded from the server when the item opens; saved (before the item) only if changed
-    let cp = [], cpOk = !it, cpChanged = false, cpSaved = false;
+    let cp = [], cpOk = !it, cpChanged = false, cpSaved = false, hd = !!(it && it.photoHD);   // hd: the first catalogue photo is the large copy of the main photo
     const cpList = $('#cpList', sh), cpAdd = $('#cpAdd', sh);
     const cpDraw = () => { if (!cpList) return;
       cpList.innerHTML = !cpOk ? '<span class="small muted">Could not load the catalogue photos (no internet?). They stay as they are; open the item again with internet to change them.</span>'
         : cp.length ? cp.map((src, k) => `<div class="cp"><img src="${esc(src)}" alt="Catalogue photo ${k + 1}"><button type="button" data-cprm="${k}" aria-label="Remove photo ${k + 1}">×</button></div>`).join('') : '<span class="small muted">None yet.</span>';
-      if (cpAdd) cpAdd.disabled = !cpOk || cp.length >= CP_MAX; };
+      if (cpAdd) cpAdd.disabled = !cpOk || cp.length >= cpMax(); };
     if (cpList && it) HOST().photos('get', it.id).then(l => { cp = Array.isArray(l) ? l : []; cpOk = true; cpDraw(); }, () => { cpOk = false; cpDraw(); }); else cpDraw();
     if (cpAdd) cpAdd.addEventListener('change', async e => {
-      const files = Array.from(e.target.files || []).slice(0, CP_MAX - cp.length); e.target.value = '';
+      const files = Array.from(e.target.files || []).slice(0, cpMax() - cp.length); e.target.value = '';
       for (const file of files) { try { cp.push(await bigPhoto(file)); cpChanged = true; } catch { toast('Could not read that photo.'); } }
-      if (files.length) toast(cp.length >= CP_MAX ? `${CP_MAX} catalogue photos: that is the most` : 'Photo ready'); cpDraw();
+      if (files.length) toast(cp.length >= cpMax() ? `${cpMax()} catalogue photos: that is the most` : 'Photo ready'); cpDraw();
     });
-    if (cpList) cpList.addEventListener('click', e => { const b = e.target.closest('[data-cprm]'); if (!b) return; cp.splice(+b.dataset.cprm, 1); cpChanged = true; cpDraw(); });
+    if (cpList) cpList.addEventListener('click', e => { const b = e.target.closest('[data-cprm]'); if (!b) return; if (+b.dataset.cprm === 0) hd = false; cp.splice(+b.dataset.cprm, 1); cpChanged = true; cpDraw(); });
     // catalogue video: sent on its own (not with Save item), right after it is made smaller
     const cvNow = $('#cvNow', sh);
     if (cvNow) {
@@ -2337,6 +2342,7 @@ function itemSheet(itemId) {
         if ($('#iSea', sh).checked) d.bySea = true;
       } else if (it) { if (it.poDep != null) d.poDep = it.poDep; if (it.poWhen) d.poWhen = it.poWhen; if (it.bySea) d.bySea = it.bySea; }   // a shop with stock keeps them as they are
       if (it && it.note) d.note = it.note;
+      if (hd && cp.length) d.photoHD = true;
       if (d.markupPct != null && !(d.markupPct >= 0)) return toast('Write the markup as a number, e.g. 60.');
       if (!d.name) return toast('Give the item a name.');
       if (!d.code) return toast('Give the item a short code, e.g. SHO-008.');
@@ -2355,7 +2361,7 @@ function itemSheet(itemId) {
     sh.addEventListener('click', e => { if (e.target.id === 'iDelYes') { if (HOST() && HOST().photos) HOST().photos('save', it.id, []).catch(() => {}); if (HOST() && HOST().video) HOST().video('videoRemove', [it.id]).catch(() => {}); } if (e.target.id === 'iDelYes') write(() => S.db.doc('items/' + it.id).delete(), 'Item deleted').then(ok => { if (ok) { logEvent('Deleted an item', it.id, it.code + ' ' + it.name, it); closeSheet(); } }); });
   });
 }
-const CP_MAX = 4, VID_SECS = 30, VID_PART = 700000, VID_MAX = 12 * 1024 * 1024;
+const cpMax = () => (PO() ? 5 : 4), VID_SECS = 30, VID_PART = 700000, VID_MAX = 12 * 1024 * 1024;
 const mmss = s => { s = Math.round(num(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 const mb = b => (num(b) / 1048576).toFixed(1) + ' MB';
 function vidErr(e) {
