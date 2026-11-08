@@ -2466,11 +2466,15 @@ function docPayload(g, type) {
   return p;
 }
 async function openDocTool(page, hashKey, payload, photoFn) {
+  toast('Opening…');
+  try { return await openDocTool2(page, hashKey, payload, photoFn); } catch (e) { toast('Could not open the tool: ' + String((e && e.message) || e).slice(0, 120)); }
+}
+async function openDocTool2(page, hashKey, payload, photoFn) {
   // same address as the tools (installed app, GitHub Pages): hand the order over through this browser's own storage and
   // open the tool in this window (a new window is often blocked or ignored in the installed app); the tool has a way back
   if (location.origin === new URL(DOC_TOOLS).origin) {
     let photo = null;
-    if (photoFn) { toast('Opening…'); try { photo = await Promise.race([photoFn(), new Promise(r => setTimeout(() => r(null), 8000))]); } catch { photo = null; } }
+    if (photoFn) { try { photo = await Promise.race([photoFn(), new Promise(r => setTimeout(() => r(null), 8000))]); } catch { photo = null; } }
     const put = ph => localStorage.setItem('ahToolHandoff', JSON.stringify({ k: hashKey, t: Date.now(), payload, photo: ph }));
     try { put(photo); } catch { try { put(null); } catch { return toast('Could not pass the order to the tool (the phone storage is full or blocked).'); } }
     location.assign(DOC_TOOLS + page + '#h=1'); return;
@@ -2556,11 +2560,11 @@ function docsSheet(g) {
   openSheet('Documents', `<p class="note" style="margin:0">For <b>${esc(g.customer || 'No name')}</b> · ${esc(g.no || '')}. The document opens in a new page, filled from this order. Check it, then save or print it there. The number is the next one in the store's document log.</p>
     ${(() => { const rn = (receiptData(g.list[0].id) || {}).no; const mine = (S.docs || []).filter(d => rn && d.ref === rn).sort((a, b) => String(a.at || '').localeCompare(String(b.at || ''))); return mine.length ? `<h3 style="margin:12px 0 4px">Already made for this order</h3><div class="list">${mine.map(d => docRow(d, false)).join('')}</div>` : ''; })()}
     <div class="list" style="margin-top:10px">${DOC_TYPES.map(([k, l, h]) => `<button type="button" class="btn block" data-doc="${k}" style="text-align:left"><b>${esc(l)}</b><br><span class="small muted">${esc(h)}</span></button>`).join('')}</div>
-    <button type="button" class="btn ghost block" data-back="1" style="margin-top:10px">Back to the orders</button>`, sh => {
+    <button type="button" class="btn ghost block" data-back="1" style="margin-top:10px">Back to the orders</button><p class="small muted" style="margin:8px 0 0">App version: documents-3</p>`, sh => {
     sh.addEventListener('click', e => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.dataset.back) return ordersSheet();
-      if (b.dataset.doc) { const p = docPayload(g, b.dataset.doc); if (!p) return toast('Could not read this order.'); openDocTool('invoice.html', 'd', p); }
+      if (b.dataset.doc) { let p = null; try { p = docPayload(g, b.dataset.doc); } catch (err) { return toast('Could not prepare the document: ' + String((err && err.message) || err).slice(0, 120)); } if (!p) return toast('Could not read this order.'); openDocTool('invoice.html', 'd', p); }
     });
   });
 }
@@ -2626,7 +2630,7 @@ function itemSheet(itemId) {
     ${adjs.length ? `<div><h3>Stock changes</h3><div class="list">${adjs.map(a => `<div class="li" style="grid-template-columns:1fr auto"><span class="small">${short(a.date)} · ${esc(a.reason)}${a.note ? ' · ' + esc(a.note) : ''} · by ${esc(whoName(a.by))}</span><b>${num(a.qty) > 0 ? '+' : ''}${esc(a.qty)}</b></div>`).join('')}</div></div>` : ''}
     ${hist.length ? `<div><h3>Sales of this item</h3><div class="list">${hist.slice(0, 20).map(s => `<div class="li" style="grid-template-columns:1fr auto"><span class="small">${short(s.date)} · ${esc(s.qty)} pc${s.size ? ' · ' + esc(s.size) : ''} · ${esc(s.payment)}</span><b>${D(s.total)}</b></div>`).join('')}</div></div>` : ''}`, sh => {
     const aj = $('#iAdj', sh); if (aj) aj.onclick = () => { closeSheet(); adjSheet(it.id); };
-    const pst = $('#iPoster', sh); if (pst) pst.onclick = () => posterSheetFor(it);
+    const pst = $('#iPoster', sh); if (pst) pst.onclick = () => { try { posterSheetFor(it); } catch (err) { toast('Could not open the poster: ' + String((err && err.message) || err).slice(0, 120)); } };
     const f = $('#itF', sh); if (!f) return;
     let photo = v.photo || '';
     $('#iPhoto', sh).addEventListener('change', async e => { const file = e.target.files[0]; if (!file) return; try { photo = await shrink(file); toast('Photo ready'); } catch { toast('Could not read that photo.'); } });
