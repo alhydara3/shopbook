@@ -1132,6 +1132,7 @@ function applyStore(p) {
   state.type = p.type;
   f.client = sClip(p.client, 200); f.clientphone = sClip(p.phone, 60); f.ref = sClip(p.ref, 60); f.related = sClip(p.related, 60);
   if (/^\d{4}-\d{2}-\d{2}$/.test(p.date || '')) f.date = p.date;
+  if (/^[A-Za-z]{1,4}-\d{1,6}$/.test(p.number || '')) f[numKey(p.type)] = p.number;
   f.docstatus = ''; f.voidnote = '';
   f.discount = sNum(p.discount);
   if (p.depositPct > 0 && p.depositPct <= 100) f.depositpct = String(Math.round(p.depositPct * 100) / 100);

@@ -1773,6 +1773,7 @@ function ordersSheet(filt) {
     ${(filt === 'open' || filt === 'new') && needRows.length ? `<div class="alert info" style="margin-top:10px"><b class="i">i</b><div style="min-width:0;flex:1"><b>To order from China</b> (orders waiting)
       <div class="list" style="margin-top:6px">${needRows.map(x => `<div class="spread small"><span>${esc(x.code)} ${esc(x.name)}${x.size ? ' · ' + esc(x.size) : ''}${x.sea ? ' · by sea' : ''}</span><b>${x.qty} pc${x.qty === 1 ? '' : 's'}</b></div>`).join('')}</div></div></div>` : ''}
     ${S.canWrite && step && step[2] && cnt(filt) > 1 ? `<button type="button" class="btn block" style="margin-top:10px" data-pomove="${filt}">${esc(step[2])}: all ${cnt(filt)} orders</button>` : ''}
+    ${OWN() ? `<button type="button" class="btn ghost block" style="margin-top:10px" data-dlog="1">Document log (${(S.docs || []).length})</button>` : ''}
     <div>${shown.map(poCard).join('') || '<div class="empty">No orders here.</div>'}</div>`;
   openSheet('Orders', body, sh => {
     const byK = k => G.find(g => g.k === k);
@@ -1780,6 +1781,7 @@ function ordersSheet(filt) {
       const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
       if (d.pof) return ordersSheet(d.pof);
       if (d.porcpt) { closeSheet(); return receiptSheet(d.porcpt); }
+      if (d.dlog) return docsLogSheet();
       if (d.podocs) { const g = byK(d.podocs); if (!g) return; return docsSheet(g); }
       if (d.popay) { const g = byK(d.popay); if (!g) return; closeSheet(); return paySalesSheet(g.list.filter(s => num(s.total) - num(s.paid) > 0.5), g.customer || 'The buyer'); }
       if (d.ponext || d.poyes) { const g = byK(d.ponext || d.poyes); if (!g) return; const to = PO_STEPS[poIdx(g.status) + 1][0];
@@ -2458,7 +2460,7 @@ function docPayload(g, type) {
   const it0 = S.items.find(i => i.id === (g.list[0] || {}).itemId) || {};
   const dep = itDepOwn(it0) || PO_DEP();
   const when = itWhen(it0) || PO_WHEN();
-  const p = { v: 1, type, client: g.customer || rd.customer || '', phone: g.phone || rd.phone || '', ref: rd.no, related: type === 'delivery' ? rd.no : '', date: today(), items, discount: rd.discount, depositPct: Math.round(dep * 100), arrival: when };
+  const p = { v: 1, type, number: nextDocNo(type), client: g.customer || rd.customer || '', phone: g.phone || rd.phone || '', ref: rd.no, related: type === 'delivery' ? rd.no : '', date: today(), items, discount: rd.discount, depositPct: Math.round(dep * 100), arrival: when };
   if (type === 'receipt') { p.received = received; p.paidBefore = Math.max(0, rd.paid - received); p.method = method; }
   if (type === 'final') p.paidBefore = rd.paid;
   return p;
@@ -2478,9 +2480,69 @@ function openDocTool(page, hashKey, payload, photoFn) {
   window.addEventListener('message', onMsg);
   setTimeout(() => window.removeEventListener('message', onMsg), 60000);
 }
+/* Document numbers and log kept by the store (collection "docs", owner only). The document tool writes its own log in this browser;
+   the store copies it here, so the numbers carry on in order on every device and the log is kept with the store's records. */
+const DOC_PRE = { proforma: 'PI', receipt: 'RC', final: 'INV', order: 'OF', delivery: 'DN' };
+const DOC_LABEL = { 'order form': 'order', 'proforma invoice': 'proforma', 'receipt': 'receipt', 'final invoice': 'final', 'delivery note': 'delivery' };
+const DOC_LOGKEY = 'ahChinaOrdersDocLogV1', DOC_CNTKEY = 'ahChinaOrdersDocN';
+function toolLog() { try { const a = JSON.parse(localStorage.getItem(DOC_LOGKEY) || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } }
+function docMax(pre) {
+  const rx = new RegExp('^' + pre + '-(\\d+)$', 'i'); let n = 0;
+  (S.docs || []).concat(toolLog().map(e => ({ no: e.number }))).forEach(d => { const m = rx.exec(String(d.no || '')); if (m) n = Math.max(n, parseInt(m[1], 10)); });
+  return n;
+}
+function nextDocNo(type) { const pre = DOC_PRE[type] || 'PI'; return pre + '-' + ('000' + (docMax(pre) + 1)).slice(-4); }
+let docsBusy = false; const docsDone = new Set();   // ids written in this session: never written twice, whatever the snapshot says
+async function docsSync() {
+  if (docsBusy || !S.db || !S.got.docs || !PO() || !OWN()) return;
+  docsBusy = true;
+  try {
+    Object.keys(DOC_PRE).forEach(k => { const pre = DOC_PRE[k], n = docMax(pre); try { if (n > (parseInt(localStorage.getItem(DOC_CNTKEY + pre) || '0', 10) || 0)) localStorage.setItem(DOC_CNTKEY + pre, String(n)); } catch {} });
+    const have = new Map((S.docs || []).map(d => [d.id, d]));
+    for (const e of toolLog()) {
+      const no = String(e.number || '').trim(), type = DOC_LABEL[String(e.type || '').toLowerCase()]; if (!no || !type || !/^[A-Za-z]{1,4}-\d{1,6}$/.test(no)) continue;
+      const base = no.toLowerCase(); let id = base, k = 1, rec;
+      while ((rec = have.get(id)) && (String(rec.customer || '') !== String(e.client || '') || String(rec.ref || '') !== String(e.ref || '')) && k < 20) id = base + '-' + (++k);
+      const cur = have.get(id);
+      const c = x => typeof x === 'number' ? x / 100 : '';
+      if (!cur && !docsDone.has(id)) {
+        const d = clean({ type, no, label: String(e.type), date: String(e.date || ''), ref: String(e.ref || ''), customer: String(e.client || ''), total: c(e.totalC), received: c(e.rcC), balance: c(e.balC), state: String(e.status || ''), at: String(e.at || new Date().toISOString()), by: S.uid || '', voided: e.voided ? String(e.voided) : '', voidNote: e.voidreason ? String(e.voidreason).slice(0, 300) : '' });
+        docsDone.add(id); try { await S.db.doc('docs/' + id).set(d); have.set(id, { ...d, id }); } catch { docsDone.delete(id); break; }
+      } else if (cur && e.voided && !cur.voided && !docsDone.has(id + '!v')) {
+        docsDone.add(id + '!v'); try { await S.db.doc('docs/' + id).update({ voided: String(e.voided), voidNote: e.voidreason ? String(e.voidreason).slice(0, 300) : '' }); } catch { docsDone.delete(id + '!v'); break; }
+      }
+    }
+  } finally { docsBusy = false; }
+}
+function docRow(d, withBtn) {
+  const amt = d.type === 'receipt' ? d.received : d.total;
+  return `<div class="li" style="grid-template-columns:1fr auto;align-items:start"><div style="min-width:0"><b>${esc(d.no)}</b> · ${esc(d.label || d.type)}${d.voided ? ' <span class="pill bad">VOID</span>' : ''}<div class="small muted">${[d.customer, d.ref, d.date ? nice(d.date) : '', amt !== '' && amt != null && !(d.type === 'delivery' || d.type === 'order') ? D(num(amt)) : ''].filter(Boolean).map(esc).join(' · ')}${d.voided && d.voidNote ? '<br>' + esc(d.voidNote) : ''}</div></div>${withBtn ? `<button type="button" class="btn ghost" data-dvoid="${esc(d.id)}">${d.voided ? 'Undo void' : 'Mark void'}</button>` : ''}</div>`;
+}
+function docsLogSheet(q) {
+  if (!(PO() && OWN())) return;
+  docsSync();
+  const all = (S.docs || []).slice().sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+  const needle = String(q || '').trim().toLowerCase();
+  const list = needle ? all.filter(d => [d.no, d.label, d.customer, d.ref, d.date].join(' ').toLowerCase().includes(needle)) : all;
+  openSheet('Document log', `<p class="note" style="margin:0">${all.length} document${all.length === 1 ? '' : 's'} made with the document tool. Numbers continue from the highest one here. “Mark void” only changes this log: cancel the document itself in the document tool too.</p>
+    <input id="dlQ" type="search" placeholder="Search number, name or order" value="${esc(needle)}" style="margin-top:8px">
+    <div class="list" style="margin-top:8px">${list.slice(0, 60).map(d => docRow(d, true)).join('') || '<div class="empty">No documents yet.</div>'}${list.length > 60 ? `<p class="small muted">Showing the latest 60 of ${list.length}. Search to find older ones.</p>` : ''}</div>
+    <button type="button" class="btn ghost block" data-back="1" style="margin-top:10px">Back to the orders</button>`, sh => {
+    const qi = $('#dlQ', sh); qi.addEventListener('change', () => docsLogSheet(qi.value));
+    sh.addEventListener('click', async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.back) return ordersSheet();
+      if (b.dataset.dvoid) { const d = (S.docs || []).find(x => x.id === b.dataset.dvoid); if (!d) return; b.disabled = true;
+        try { await S.db.doc('docs/' + d.id).update(d.voided ? { voided: '', voidNote: '' } : { voided: today(), voidNote: 'Marked void in the store' }); } catch { toast('Could not save (no internet?)'); b.disabled = false; return; }
+        setTimeout(() => docsLogSheet(qi.value), 400); }
+    });
+  });
+}
 function docsSheet(g) {
   if (!(PO() && OWN())) return;
-  openSheet('Documents', `<p class="note" style="margin:0">For <b>${esc(g.customer || 'No name')}</b> · ${esc(g.no || '')}. The document opens in a new page, filled from this order. Check it, then save or print it there. Its numbers come from the document tool's own counter.</p>
+  docsSync();
+  openSheet('Documents', `<p class="note" style="margin:0">For <b>${esc(g.customer || 'No name')}</b> · ${esc(g.no || '')}. The document opens in a new page, filled from this order. Check it, then save or print it there. The number is the next one in the store's document log.</p>
+    ${(() => { const rn = (receiptData(g.list[0].id) || {}).no; const mine = (S.docs || []).filter(d => rn && d.ref === rn).sort((a, b) => String(a.at || '').localeCompare(String(b.at || ''))); return mine.length ? `<h3 style="margin:12px 0 4px">Already made for this order</h3><div class="list">${mine.map(d => docRow(d, false)).join('')}</div>` : ''; })()}
     <div class="list" style="margin-top:10px">${DOC_TYPES.map(([k, l, h]) => `<button type="button" class="btn block" data-doc="${k}" style="text-align:left"><b>${esc(l)}</b><br><span class="small muted">${esc(h)}</span></button>`).join('')}</div>
     <button type="button" class="btn ghost block" data-back="1" style="margin-top:10px">Back to the orders</button>`, sh => {
     sh.addEventListener('click', e => {
@@ -3474,7 +3536,8 @@ render();
   const onErr = e => { if (e && e.code === 'revoked') { S.canWrite = false; } schedule(); };
   db.doc('settings/main').onSnapshot(s => { S.settings = s.exists ? s.data() : null; S.got.settings = true; schedule(); }, onErr);
   const coll = (name, key) => db.collection(name).onSnapshot(q => { S[key] = q.docs.map(d => ({ ...d.data(), id: d.id })); S.got[key] = true; schedule(); }, onErr);
-  coll('shipments', 'ships'); coll('items', 'items'); coll('sales', 'sales'); coll('expenses', 'expenses'); coll('customers', 'customers'); coll('adjustments', 'adjustments'); coll('cashups', 'cashups'); coll('counts', 'counts'); coll('log', 'log');
+  coll('shipments', 'ships'); coll('items', 'items'); coll('sales', 'sales'); coll('expenses', 'expenses'); coll('customers', 'customers'); coll('adjustments', 'adjustments'); coll('cashups', 'cashups'); coll('counts', 'counts'); coll('log', 'log'); db.collection('docs').onSnapshot(q => { S.docs = q.docs.map(d => ({ ...d.data(), id: d.id })); S.got.docs = true; schedule(); docsSync(); }, onErr);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) docsSync(); });
   db.doc('meta/backup').onSnapshot(s => { S.meta.backup = s.exists ? s.data() : null; schedule(); }, onErr);
   if (HOST()) db.doc('catalog/main').onSnapshot(s => { S.catalog = s.exists ? s.data() : null; S.got.catalog = true; schedule(); }, onErr);
   render();
