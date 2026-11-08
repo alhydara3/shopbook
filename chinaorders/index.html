@@ -1744,7 +1744,7 @@ function poCard(g) {
       <span class="pill ${g.status === 'arrived' ? 'warn' : g.status === 'collected' ? 'ok' : ''}">${esc(poLabel(g.status))}</span></div>
     <div class="small" style="margin-top:6px">${poItems(g).map(esc).join('<br>') || 'All items returned'}</div>${poIdx(g.status) < 3 ? `<div class="small muted" style="margin-top:2px">${esc((s => s.charAt(0).toUpperCase() + s.slice(1))(poArrFor(g.list)))}</div>` : ''}
     <div class="small" style="margin-top:4px">Total <b>${D(g.total)}</b> · paid ${D(g.paid)} · ${g.due > 0.5 ? `<b style="color:var(--warn)">balance ${D(g.due)}</b>` : '<b style="color:var(--target)">paid in full</b>'}</div>
-    ${S.canWrite ? `<div class="fgrid" style="margin-top:8px">${next ? `<button type="button" class="btn primary" data-ponext="${esc(g.k)}">${esc(PO_STEPS[i][2])}</button>` : ''}${g.due > 0.5 ? `<button type="button" class="btn" data-popay="${esc(g.k)}">Record payment</button>` : ''}<button type="button" class="btn ghost" data-porcpt="${esc(g.list[0].id)}">Receipt</button>${tell}</div>
+    ${S.canWrite ? `<div class="fgrid" style="margin-top:8px">${next ? `<button type="button" class="btn primary" data-ponext="${esc(g.k)}">${esc(PO_STEPS[i][2])}</button>` : ''}${g.due > 0.5 ? `<button type="button" class="btn" data-popay="${esc(g.k)}">Record payment</button>` : ''}<button type="button" class="btn ghost" data-porcpt="${esc(g.list[0].id)}">Receipt</button>${OWN() ? `<button type="button" class="btn ghost" data-podocs="${esc(g.k)}">Documents</button>` : ''}${tell}</div>
     <div class="confirm" data-pocf="${esc(g.k)}" hidden><p style="margin:0 0 8px">${esc(g.customer || 'The buyer')} still owes <b>${D(g.due)}</b>. Record the payment first, or mark the order as collected anyway (the balance stays in the Credit tab).</p><button type="button" class="btn danger" data-poyes="${esc(g.k)}">Mark as collected anyway</button></div>` : ''}</div>`;
 }
 async function poMove(groups, to) {
@@ -1780,6 +1780,7 @@ function ordersSheet(filt) {
       const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
       if (d.pof) return ordersSheet(d.pof);
       if (d.porcpt) { closeSheet(); return receiptSheet(d.porcpt); }
+      if (d.podocs) { const g = byK(d.podocs); if (!g) return; return docsSheet(g); }
       if (d.popay) { const g = byK(d.popay); if (!g) return; closeSheet(); return paySalesSheet(g.list.filter(s => num(s.total) - num(s.paid) > 0.5), g.customer || 'The buyer'); }
       if (d.ponext || d.poyes) { const g = byK(d.ponext || d.poyes); if (!g) return; const to = PO_STEPS[poIdx(g.status) + 1][0];
         if (to === 'collected' && g.due > 0.5 && !d.poyes) { const cf = $(`[data-pocf="${CSS.escape(g.k)}"]`, sh); if (cf) cf.hidden = false; return; }
@@ -2442,6 +2443,71 @@ function expSheet(expId) {
   });
 }
 
+/* Documents (owner only, pre-order store): open the invoice and poster tools filled from the store */
+const DOC_TOOLS = 'https://alhydara3.github.io/shopbook/chinaorders/tools/';
+const DOC_TYPES = [['order', 'Order form', 'What the buyer asked for, for them to sign before you order'], ['proforma', 'Proforma invoice', 'The price and deposit, before payment'], ['receipt', 'Receipt', 'For the last payment you recorded'], ['final', 'Final invoice', 'When the goods arrive: what was paid and the balance'], ['delivery', 'Delivery note', 'For the buyer to check the goods and sign when they collect']];
+function b64u(o) { const u8 = new TextEncoder().encode(JSON.stringify(o)); let s = ''; u8.forEach(c => { s += String.fromCharCode(c); }); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+function docPayload(g, type) {
+  const rd = receiptData(g.list[0].id); if (!rd) return null;
+  const items = rd.lines.map(l => ({ d: l.name, s: l.size, q: l.qty, p: l.price }));
+  const pays = []; g.list.forEach(s => (s.payments || []).forEach(p => { if (num(p.amount) > 0) pays.push(p); }));
+  pays.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const okPays = pays.length && Math.abs(sum(pays, p => num(p.amount)) - rd.paid) < 1;
+  const last = okPays ? pays[pays.length - 1] : null;
+  const received = last ? num(last.amount) : rd.paid, method = last ? (last.method || 'Cash') : (rd.pays || '');
+  const it0 = S.items.find(i => i.id === (g.list[0] || {}).itemId) || {};
+  const dep = itDepOwn(it0) || PO_DEP();
+  const when = itWhen(it0) || PO_WHEN();
+  const p = { v: 1, type, client: g.customer || rd.customer || '', phone: g.phone || rd.phone || '', ref: rd.no, related: type === 'delivery' ? rd.no : '', date: today(), items, discount: rd.discount, depositPct: Math.round(dep * 100), arrival: when };
+  if (type === 'receipt') { p.received = received; p.paidBefore = Math.max(0, rd.paid - received); p.method = method; }
+  if (type === 'final') p.paidBefore = rd.paid;
+  return p;
+}
+function openDocTool(page, hashKey, payload, photoFn) {
+  const win = window.open(DOC_TOOLS + page + '#' + hashKey + '=' + b64u(payload), '_blank');
+  if (!win) { toast('Your browser blocked the new page. Allow pop-ups for this app and try again.'); return; }
+  if (!photoFn) return;
+  const origin = new URL(DOC_TOOLS).origin;
+  let done = false;
+  const onMsg = async e => {
+    if (done || e.source !== win || e.origin !== origin || !e.data || e.data.type !== 'ahtool-ready') return;
+    done = true; window.removeEventListener('message', onMsg);
+    let photo = null; try { photo = await photoFn(); } catch { photo = null; }
+    try { win.postMessage({ type: 'ahtool-data', photo: photo || null }, origin); } catch {}
+  };
+  window.addEventListener('message', onMsg);
+  setTimeout(() => window.removeEventListener('message', onMsg), 60000);
+}
+function docsSheet(g) {
+  if (!(PO() && OWN())) return;
+  openSheet('Documents', `<p class="note" style="margin:0">For <b>${esc(g.customer || 'No name')}</b> · ${esc(g.no || '')}. The document opens in a new page, filled from this order. Check it, then save or print it there. Its numbers come from the document tool's own counter.</p>
+    <div class="list" style="margin-top:10px">${DOC_TYPES.map(([k, l, h]) => `<button type="button" class="btn block" data-doc="${k}" style="text-align:left"><b>${esc(l)}</b><br><span class="small muted">${esc(h)}</span></button>`).join('')}</div>
+    <button type="button" class="btn ghost block" data-back="1" style="margin-top:10px">Back to the orders</button>`, sh => {
+    sh.addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.back) return ordersSheet();
+      if (b.dataset.doc) { const p = docPayload(g, b.dataset.doc); if (!p) return toast('Could not read this order.'); openDocTool('invoice.html', 'd', p); }
+    });
+  });
+}
+function posterPayload(it) {
+  const nm = String(it.name || '').trim(); let n1 = nm, n2 = '';
+  if (nm.length > 14) { const w = nm.split(/\s+/); let best = 1, bd = 1e9; for (let i = 1; i < w.length; i++) { const d = Math.abs(w.slice(0, i).join(' ').length - w.slice(i).join(' ').length); if (d < bd) { bd = d; best = i; } } n1 = w.slice(0, best).join(' '); n2 = w.slice(best).join(' '); }
+  const dep = itDepOwn(it) || PO_DEP(), when = itWhen(it);
+  const lines = String(it.desc || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean).slice(0, 5);
+  return { v: 1, photo: true, specs: lines, text: { tag: String(it.group || '').toUpperCase(), name1: n1, name2: n2, tagline: itSea(it) ? SEA_LABEL : '', price: num(it.target) > 0 ? 'D ' + Math.round(num(it.target)).toLocaleString('en-US') : '', deposit: isFull(dep) ? 'Full payment when you order' : Math.round(dep * 100) + '% deposit to confirm your order', arrival: when ? 'About ' + when : '', extra: it.sizes || '', ref: it.code || '' } };
+}
+function posterSheetFor(it) {
+  if (!(PO() && OWN())) return;
+  const photoFn = async () => {
+    let big = null;
+    try { if (HOST() && HOST().photos) { const l = await HOST().photos('get', it.id); if (Array.isArray(l) && l.length) big = l[0]; } } catch {}
+    const c = big || it.photo || ''; const u = typeof c === 'string' ? c : (c && (c.data || c.src || c.url)) || '';
+    return /^data:image\/(png|jpeg|webp|gif);base64,/.test(u) ? u : null;
+  };
+  openDocTool('poster.html', 'p', posterPayload(it), photoFn);
+}
+
 /* Item form */
 function itemSheet(itemId) {
   const ship = curShip(); const c = calcShip(ship);
@@ -2454,6 +2520,7 @@ function itemSheet(itemId) {
   const adjs = it ? S.adjustments.filter(a => a.itemId === it.id).sort((a, b) => String(b.date).localeCompare(String(a.date))) : [];
   openSheet(it ? it.name : 'Add item', `${it ? `<div class="row" style="flex-wrap:nowrap">${img(it, 'thumb lg')}<div class="small muted">${esc(it.code)} · ${esc(it.group)}${it.sizes ? '<br>' + esc(it.sizes) : ''}</div></div>${it.catHide === true && it.forSale ? '<p class="small" style="margin:0"><span class="pill">Not in the public catalogue</span></p>' : ''}${PO() && (itSea(it) || itOwnPo(it)) ? `<p class="small" style="margin:0">${itSea(it) ? `<span class="pill">${esc(SEA_LABEL)}</span> ` : ''}${itOwnPo(it) ? esc(`This product: ${depWord(itDep(it))} · ${poArrive(itWhen(it))}`) : ''}</p>` : ''}${it.desc ? `<div><h3 style="margin:0 0 4px">Details for buyers</h3><p class="idesc">${esc(it.desc)}</p></div>` : ''}` : ''}${info}
     ${it && it.forSale && S.canWrite ? `<button type="button" class="btn block" id="iAdj">Damaged, lost, given away or found? Record a stock change</button>` : ''}
+    ${it && it.forSale && PO() && OWN() ? `<button type="button" class="btn block" id="iPoster">Make a poster for this item</button>` : ''}
     ${ro && S.canWrite ? '<p class="note" style="margin:0">Only the owner can change prices and item details.</p>' : ''}
     ${ro ? '' : `<form id="itF" class="list" style="gap:12px">
       <div class="fgrid"><label class="f">Code<input id="iCode" value="${esc(v.code)}" placeholder="e.g. SHO-008"></label><label class="f">Name<input id="iName" value="${esc(v.name)}"></label></div>
@@ -2485,6 +2552,7 @@ function itemSheet(itemId) {
     ${adjs.length ? `<div><h3>Stock changes</h3><div class="list">${adjs.map(a => `<div class="li" style="grid-template-columns:1fr auto"><span class="small">${short(a.date)} · ${esc(a.reason)}${a.note ? ' · ' + esc(a.note) : ''} · by ${esc(whoName(a.by))}</span><b>${num(a.qty) > 0 ? '+' : ''}${esc(a.qty)}</b></div>`).join('')}</div></div>` : ''}
     ${hist.length ? `<div><h3>Sales of this item</h3><div class="list">${hist.slice(0, 20).map(s => `<div class="li" style="grid-template-columns:1fr auto"><span class="small">${short(s.date)} · ${esc(s.qty)} pc${s.size ? ' · ' + esc(s.size) : ''} · ${esc(s.payment)}</span><b>${D(s.total)}</b></div>`).join('')}</div></div>` : ''}`, sh => {
     const aj = $('#iAdj', sh); if (aj) aj.onclick = () => { closeSheet(); adjSheet(it.id); };
+    const pst = $('#iPoster', sh); if (pst) pst.onclick = () => posterSheetFor(it);
     const f = $('#itF', sh); if (!f) return;
     let photo = v.photo || '';
     $('#iPhoto', sh).addEventListener('change', async e => { const file = e.target.files[0]; if (!file) return; try { photo = await shrink(file); toast('Photo ready'); } catch { toast('Could not read that photo.'); } });

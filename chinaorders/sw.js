@@ -1,9 +1,9 @@
 /* Shop Book app: keeps the app's files on the phone so it opens without internet.
    The records themselves are kept by the page (IndexedDB), not here. */
-var KEY = 'chinaorders', VERSION = '17ae63ee51be-gambian9-electricity';
+var KEY = 'chinaorders', VERSION = 'level1-documents-1';
 var CACHE = 'shopbook-' + KEY + '-' + VERSION;
 var SHELL = ['./', './index.html', './config.js', './manifest.webmanifest', './icon-192.png', './icon-512.png',
-  './libs/jspdf.umd.min.js', './libs/xlsx.full.min.js', './libs/jszip.min.js'];
+  './libs/jspdf.umd.min.js', './libs/xlsx.full.min.js', './libs/jszip.min.js', './tools/invoice.html', './tools/poster.html'];
 var FRESH = /\/(index\.html|catalogue\.html|config\.js|manifest\.webmanifest)?$/;   // pages and settings: newest when online
 var APPPAGE = /\/(index\.html)?$/;                                              // the Shop Book itself (the catalogue page is separate)
 
