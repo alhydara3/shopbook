@@ -1129,7 +1129,7 @@ function cashupSheet() {
 
 /* ---------- backups ---------- */
 const BK_COLLS = [['settings', () => S.settings ? [{ ...S.settings, id: 'main' }] : []], ['shipments', () => S.ships], ['items', () => S.items], ['sales', () => S.sales], ['customers', () => S.customers],
-  ['expenses', () => S.expenses], ['adjustments', () => S.adjustments], ['cashups', () => S.cashups], ['counts', () => S.counts], ['log', () => S.log]];
+  ['expenses', () => S.expenses], ['adjustments', () => S.adjustments], ['cashups', () => S.cashups], ['counts', () => S.counts], ['log', () => S.log], ['docs', () => S.docs || []]];
 function backupTables() {
   const shipName = id => (S.ships.find(s => s.id === id) || {}).name || '';
   const itemName = s => (S.items.find(i => i.id === s.itemId) || {}).name || s.name || '';
@@ -1150,6 +1150,8 @@ function backupTables() {
   T['Monthly profit'] = [['Month', 'Sales (D)', 'Pieces', 'Cost of goods (D)', 'Gross profit (D)', 'Written off (D)', 'Expenses (D)', 'Profit (D)', 'Money received (D)']]
     .concat(monthlyProfit(true).slice().reverse().map(m => [m.ym, Math.round(m.sales), m.pieces, Math.round(m.cogs), Math.round(m.gross), Math.round(m.write), Math.round(m.exp), Math.round(m.net), Math.round(m.cash)]));
   T.Log = [['When', 'Who', 'What', 'Details']].concat(S.log.slice().sort((a, b) => String(a.at).localeCompare(String(b.at))).map(e => [String(e.at).replace('T', ' ').slice(0, 16), whoName(e.by), e.action, e.summary || '']));
+  if (PO() && OWN()) T.Documents = [['Number', 'Type', 'Customer', 'Order', 'Date', 'Total (D)', 'Received (D)', 'Balance (D)', 'State', 'Void', 'Void note', 'Made at']]
+    .concat((S.docs || []).slice().sort((a, b) => String(a.at || '').localeCompare(String(b.at || ''))).map(d => [d.no || '', d.label || d.type || '', d.customer || '', d.ref || '', d.date || '', d.total === '' ? '' : num(d.total), d.received === '' ? '' : num(d.received), d.balance === '' ? '' : num(d.balance), d.state || '', d.voided || '', d.voidNote || '', String(d.at || '').replace('T', ' ').slice(0, 16)]));
   return T;
 }
 async function markBackup(kind) { try { await S.db.doc('meta/backup').set({ at: new Date().toISOString(), by: S.uid || '', kind }); } catch {} }
@@ -1177,10 +1179,11 @@ async function backupToSheet(btn) {
   const id = ST().backupSheetId; if (!id) return toast('No backup Google Sheet is set.');
   btn.disabled = true; const old = btn.textContent; btn.textContent = 'Copying…';
   try {
-    const T = backupTables(); const tabs = Object.keys(T);
+    const T = backupTables(); const tabs = Object.keys(T).filter(x => x !== 'Documents');   // the Documents tab is added only if it exists in the backup Sheet (below)
     await gs('batch_clear_values', { spreadsheetId: id, ranges: tabs.map(t => `'${t}'!A1:Z20000`) });
     for (const t of tabs) { btn.textContent = 'Copying ' + t + '…'; const pc = T[t][0].indexOf('Phone');
       await gs('update_values', { spreadsheetId: id, range: `'${t}'!A1`, values: T[t].map((r, i) => r.map((v, j) => gsCell(v, i > 0 && j === pc))) }); }
+    if (T.Documents) { try { btn.textContent = 'Copying Documents…'; await gs('batch_clear_values', { spreadsheetId: id, ranges: ["'Documents'!A1:Z20000"] }); await gs('update_values', { spreadsheetId: id, range: "'Documents'!A1", values: T.Documents.map(r => r.map(v => gsCell(v, false))) }); } catch {} }
     await gs('update_values', { spreadsheetId: id, range: "'About'!A1:B3", values: [[APP.book + ': backup copy', ''], ['Last copied', new Date().toLocaleString('en-GB', { timeZone: TZ }) + ' (Gambia time)'], ['Rows', tabs.map(t => `${t} ${T[t].length - 1}`).join(', ')]] });
     await markBackup('sheet'); logEvent('Backup', '', 'Copied everything to the backup Google Sheet'); toast('Backup copied to Google Sheets');
   } catch (e) { toast(gsErr(e)); }

@@ -376,7 +376,7 @@ var TEXTS = [
   { id: 'cap2', group: 'f-photos', label: 'Small photo 2 caption', def: 'Fingerprint', fit: ['p-c2', 158, 20, 13] },
   { id: 'cap3', group: 'f-photos', label: 'Small photo 3 caption', def: 'Side ports', fit: ['p-c3', 158, 20, 13] },
 
-  { id: 'cataloglink', group: 'f-caption', label: 'Catalogue link (caption only, optional)', def: '' },
+  { id: 'cataloglink', group: 'f-caption', label: 'Catalogue link (caption only, optional)', def: 'https://alhydara3.github.io/shopbook/chinaorders/catalogue.html' },
   { id: 'hashtags', group: 'f-caption', label: 'Hashtags (caption only, optional)', def: '#AHChinaOrders #PreOrder' },
 
   { id: 'badge', group: 'f-brand', label: 'Logo letters (if no logo image)', def: 'AH' },
@@ -444,6 +444,7 @@ function loadState() {
     if (raw) {
       var s = JSON.parse(raw);
       if (s.text) TEXTS.forEach(function (t) { if (typeof s.text[t.id] === 'string') state.text[t.id] = s.text[t.id]; });
+      if (!state.text.cataloglink || !state.text.cataloglink.trim()) state.text.cataloglink = 'https://alhydara3.github.io/shopbook/chinaorders/catalogue.html';
       if (s.specs && s.specs.length >= 4) { state.specs = s.specs; while (state.specs.length < 5) state.specs.push({ text: '', icon: 'battery' }); }
       if (s.colors) { state.colors.accent = s.colors.accent || state.colors.accent; state.colors.ground = s.colors.ground || state.colors.ground; state.colors.photobg = s.colors.photobg || state.colors.photobg; }
       if (s.pos) state.pos = s.pos;
@@ -1027,7 +1028,7 @@ function fillFromStore(p, photo) {
   var isSample = (cur === 'ThinkPadT14s Gen 2') || cur.charAt(0) === '[' || !cur || cur === wanted;
   if (!isSample && !window.confirm('Replace the poster you were working on (' + cur.slice(0, 40) + ') with this product from the store?')) return false;
   o.text = {}; TEXTS.forEach(function (d) { if (typeof state.text[d.id] === 'string') o.text[d.id] = state.text[d.id]; });
-  ['tag','name1','name2','pbadge','tagline','pricelabel','price','deposit','arrival','extra','ref','phone','cataloglink'].forEach(function (k) {
+  ['tag','name1','name2','pbadge','tagline','pricelabel','price','deposit','arrival','extra','ref','phone'].forEach(function (k) {
     if (typeof tx[k] === 'string') o.text[k] = tx[k].replace(/[\u0000-\u001f]/g, ' ').slice(0, 300);
   });
   var sp = Array.isArray(p.specs) ? p.specs : [];

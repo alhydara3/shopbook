@@ -305,7 +305,7 @@ function defaults() {
   return {
     type: 'proforma',
     f: {
-      numP: 'PI-0001', numR: 'RC-0001', numF: 'INV-0001', numO: 'OF-0001', numD: 'DN-0001', date: today(), validuntil: '', duedate: '', ref: '', related: '', issuedby: '',
+      numP: 'PI-0001', numR: 'RC-0001', numF: 'INV-0001', numO: 'OF-0001', numD: 'DN-0001', date: today(), validuntil: '', duedate: '', ref: '', related: '', issuedby: 'Alhagie Hydara',
       client: '[Client name]', clientphone: '[Client phone]', clientemail: '[Client email]', clientaddr: '',
       currency: 'D', discount: '', taxlabel: '', taxrate: '', chargeslabel: 'Delivery', charges: '', depositpct: '75',
       paidbefore: '', received: '', paydate: today(), method: '[Payment method]',
@@ -319,7 +319,7 @@ function defaults() {
       terms_d: 'I received the goods listed above and checked them at collection. Any damage, missing item or wrong item is written in the notes above. Anything I find later and did not note here must be reported within 48 hours of collection, with photos.',
       notes: '',
       docstatus: '', voidnote: '',
-      sellername: 'AH CHINA ORDERS', sellerphone: '+220 833 683 790', selleremail: '[Your email]', selleraddress: '[Your address]', selltax: '',
+      sellername: 'AH CHINA ORDERS', sellerphone: '+220 833 683 790', selleremail: 'alhydara@gmail.com', selleraddress: 'Banjul, The Gambia', selltax: '',
       stampmode: 'generated', stampbottom: 'THE GAMBIA', verify: 'yes'
     },
     items: [
@@ -406,6 +406,11 @@ function sanitize(o) {
 }
 function loadState() {
   try { var raw = localStorage.getItem(KEY); if (raw) state = sanitize(JSON.parse(raw)); } catch (e) { state = defaults(); }
+  // details saved before they were built in: fill them in once (a value you typed yourself is never replaced)
+  var d0 = defaults().f, g = state.f;
+  if (!String(g.issuedby || '').trim()) g.issuedby = d0.issuedby;
+  if (String(g.selleremail || '').charAt(0) === '[') g.selleremail = d0.selleremail;
+  if (String(g.selleraddress || '').charAt(0) === '[') g.selleraddress = d0.selleraddress;
 }
 
 /* ---------- money and numbers ---------- */
