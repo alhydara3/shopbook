@@ -1146,7 +1146,23 @@ function applyStore(p) {
   status('Filled from the store: ' + docName().toLowerCase() + ' for ' + (f.client || 'the client') + '. Check it, then save or print.');
   return true;
 }
+
+/* ---------- handed over by the store through this browser's own storage (works in the installed app, no pop-up needed) ---------- */
+function storeHandoff(key) {
+  if (!/^#h=1\b/.test(location.hash || '')) return null;
+  try { if (history.replaceState) history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  var o = null;
+  try { o = JSON.parse(localStorage.getItem('ahToolHandoff') || 'null'); localStorage.removeItem('ahToolHandoff'); } catch (e) { return null; }
+  if (!o || o.k !== key || typeof o.t !== 'number' || Math.abs(Date.now() - o.t) > 600000 || !o.payload) return null;
+  var bar = document.createElement('div'); bar.id = 'back-store';
+  bar.style.cssText = 'padding:8px 12px;background:#0F2A63;font:600 14px Arial,sans-serif';
+  var a = document.createElement('a'); a.href = './../'; a.textContent = '← Back to the store'; a.style.cssText = 'color:#fff;text-decoration:none';
+  bar.appendChild(a); document.body.insertBefore(bar, document.body.firstChild);
+  var st = document.createElement('style'); st.textContent = '@media print{#back-store{display:none!important}}'; document.head.appendChild(st);
+  return o;
+}
 (function () {
+  var ho = storeHandoff('d'); if (ho) { try { applyStore(ho.payload); } catch (e) { status('Could not read the order from the store.'); } return; }
   var h = location.hash || '';
   var m = /^#d=([A-Za-z0-9_-]+)/.exec(h);
   if (!m) return;

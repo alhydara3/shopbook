@@ -2465,7 +2465,19 @@ function docPayload(g, type) {
   if (type === 'final') p.paidBefore = rd.paid;
   return p;
 }
-function openDocTool(page, hashKey, payload, photoFn) {
+async function openDocTool(page, hashKey, payload, photoFn) {
+  // same address as the tools (installed app, GitHub Pages): hand the order over through this browser's own storage and
+  // open the tool in this window (a new window is often blocked or ignored in the installed app); the tool has a way back
+  if (location.origin === new URL(DOC_TOOLS).origin) {
+    let photo = null;
+    if (photoFn) { toast('Opening…'); try { photo = await Promise.race([photoFn(), new Promise(r => setTimeout(() => r(null), 8000))]); } catch { photo = null; } }
+    const put = ph => localStorage.setItem('ahToolHandoff', JSON.stringify({ k: hashKey, t: Date.now(), payload, photo: ph }));
+    try { put(photo); } catch { try { put(null); } catch { return toast('Could not pass the order to the tool (the phone storage is full or blocked).'); } }
+    location.assign(DOC_TOOLS + page + '#h=1'); return;
+  }
+  return openDocToolLegacy(page, hashKey, payload, photoFn);
+}
+function openDocToolLegacy(page, hashKey, payload, photoFn) {
   const win = window.open(DOC_TOOLS + page + '#' + hashKey + '=' + b64u(payload), '_blank');
   if (!win) { toast('Your browser blocked the new page. Allow pop-ups for this app and try again.'); return; }
   if (!photoFn) return;

@@ -1040,7 +1040,23 @@ function fillFromStore(p, photo) {
   status('Filled from the store: ' + ((tx.name1 || '') + ' ' + (tx.name2 || '')).trim() + '. Add the small photos if you want, then download.');
   return true;
 }
+
+/* ---------- handed over by the store through this browser's own storage (works in the installed app, no pop-up needed) ---------- */
+function storeHandoff(key) {
+  if (!/^#h=1\b/.test(location.hash || '')) return null;
+  try { if (history.replaceState) history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  var o = null;
+  try { o = JSON.parse(localStorage.getItem('ahToolHandoff') || 'null'); localStorage.removeItem('ahToolHandoff'); } catch (e) { return null; }
+  if (!o || o.k !== key || typeof o.t !== 'number' || Math.abs(Date.now() - o.t) > 600000 || !o.payload) return null;
+  var bar = document.createElement('div'); bar.id = 'back-store';
+  bar.style.cssText = 'padding:8px 12px;background:#0F2A63;font:600 14px Arial,sans-serif';
+  var a = document.createElement('a'); a.href = './../'; a.textContent = '← Back to the store'; a.style.cssText = 'color:#fff;text-decoration:none';
+  bar.appendChild(a); document.body.insertBefore(bar, document.body.firstChild);
+  var st = document.createElement('style'); st.textContent = '@media print{#back-store{display:none!important}}'; document.head.appendChild(st);
+  return o;
+}
 (function () {
+  var ho = storeHandoff('p'); if (ho) { try { fillFromStore(ho.payload, ho.photo); } catch (e) { status('Could not fill the poster from the store.'); } return; }
   var m = /^#p=([A-Za-z0-9_-]+)/.exec(location.hash || '');
   if (!m) return;
   try { if (history.replaceState) history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
