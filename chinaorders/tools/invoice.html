@@ -319,7 +319,7 @@ function defaults() {
       terms_d: 'I received the goods listed above and checked them at collection. Any damage, missing item or wrong item is written in the notes above. Anything I find later and did not note here must be reported within 48 hours of collection, with photos.',
       notes: '',
       docstatus: '', voidnote: '',
-      sellername: 'AH CHINA ORDERS', sellerphone: '+220 833 683 790', selleremail: 'alhydara@gmail.com', selleraddress: 'Banjul, The Gambia', selltax: '',
+      sellername: 'AH CHINA ORDERS', sellerphone: '+220 833 683 790', selleremail: '[Your email]', selleraddress: 'Banjul, The Gambia', selltax: '',
       stampmode: 'generated', stampbottom: 'THE GAMBIA', verify: 'yes'
     },
     items: [
@@ -409,7 +409,6 @@ function loadState() {
   // details saved before they were built in: fill them in once (a value you typed yourself is never replaced)
   var d0 = defaults().f, g = state.f;
   if (!String(g.issuedby || '').trim()) g.issuedby = d0.issuedby;
-  if (String(g.selleremail || '').charAt(0) === '[') g.selleremail = d0.selleremail;
   if (String(g.selleraddress || '').charAt(0) === '[') g.selleraddress = d0.selleraddress;
 }
 
@@ -1142,6 +1141,11 @@ function applyStore(p) {
   f.discount = sNum(p.discount);
   if (p.depositPct > 0 && p.depositPct <= 100) f.depositpct = String(Math.round(p.depositPct * 100) / 100);
   if (p.arrival) f.arrival = sClip(p.arrival, 80);
+  if (p.seller && typeof p.seller === 'object') {   // your details, kept privately in the store
+    if (p.seller.name) f.issuedby = sClip(p.seller.name, 120);
+    if (p.seller.email) f.selleremail = sClip(p.seller.email, 120);
+    if (p.seller.address) f.selleraddress = sClip(p.seller.address, 200);
+  }
   f.paidbefore = sNum(p.paidBefore); f.received = sNum(p.received); f.method = sClip(p.method, 60);
   for (var i = 0; i < state.items.length; i++) {
     var r = (Array.isArray(p.items) && p.items[i] && typeof p.items[i] === 'object') ? p.items[i] : {};

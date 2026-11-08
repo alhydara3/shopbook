@@ -2463,7 +2463,8 @@ function docPayload(g, type) {
   const it0 = S.items.find(i => i.id === (g.list[0] || {}).itemId) || {};
   const dep = itDepOwn(it0) || PO_DEP();
   const when = itWhen(it0) || PO_WHEN();
-  const p = { v: 1, type, number: nextDocNo(type), client: g.customer || rd.customer || '', phone: g.phone || rd.phone || '', ref: rd.no, related: type === 'delivery' ? rd.no : '', date: today(), items, discount: rd.discount, depositPct: Math.round(dep * 100), arrival: when };
+  const di = ST().docInfo || {};
+  const p = { v: 1, type, seller: { name: di.name || '', email: di.email || '', address: di.address || '' }, number: nextDocNo(type), client: g.customer || rd.customer || '', phone: g.phone || rd.phone || '', ref: rd.no, related: type === 'delivery' ? rd.no : '', date: today(), items, discount: rd.discount, depositPct: Math.round(dep * 100), arrival: when };
   if (type === 'receipt') { p.received = received; p.paidBefore = Math.max(0, rd.paid - received); p.method = method; }
   if (type === 'final') p.paidBefore = rd.paid;
   return p;
@@ -2563,10 +2564,16 @@ function docsSheet(g) {
   openSheet('Documents', `<p class="note" style="margin:0">For <b>${esc(g.customer || 'No name')}</b> · ${esc(g.no || '')}. The document opens in a new page, filled from this order. Check it, then save or print it there. The number is the next one in the store's document log.</p>
     ${(() => { const rn = (receiptData(g.list[0].id) || {}).no; const mine = (S.docs || []).filter(d => rn && d.ref === rn).sort((a, b) => String(a.at || '').localeCompare(String(b.at || ''))); return mine.length ? `<h3 style="margin:12px 0 4px">Already made for this order</h3><div class="list">${mine.map(d => docRow(d, false)).join('')}</div>` : ''; })()}
     <div class="list" style="margin-top:10px">${DOC_TYPES.map(([k, l, h]) => `<button type="button" class="btn block" data-doc="${k}" style="text-align:left"><b>${esc(l)}</b><br><span class="small muted">${esc(h)}</span></button>`).join('')}</div>
-    <button type="button" class="btn ghost block" data-back="1" style="margin-top:10px">Back to the orders</button><p class="small muted" style="margin:8px 0 0">App version: documents-3</p>`, sh => {
-    sh.addEventListener('click', e => {
+    <details style="margin-top:12px"><summary><b>Your details on documents</b></summary><p class="note" style="margin:6px 0">Kept privately in the store (not in the public page) and put on every document. Leave a line empty to use the document tool's own.</p>
+      <label class="f">Name<input id="diName" value="${esc((ST().docInfo || {}).name || '')}" placeholder="Alhagie Hydara"></label>
+      <label class="f">Email<input id="diEmail" type="email" value="${esc((ST().docInfo || {}).email || '')}" placeholder="your email"></label>
+      <label class="f">Address<input id="diAddr" value="${esc((ST().docInfo || {}).address || '')}" placeholder="Banjul, The Gambia"></label>
+      <button type="button" class="btn primary block" data-disave="1">Save my details</button></details>
+    <button type="button" class="btn ghost block" data-back="1" style="margin-top:10px">Back to the orders</button><p class="small muted" style="margin:8px 0 0">App version: documents-4</p>`, sh => {
+    sh.addEventListener('click', async e => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.dataset.back) return ordersSheet();
+      if (b.dataset.disave) { const v = id => String(($(id, sh) || {}).value || '').trim().slice(0, 120); if (await saveSettings({ docInfo: { name: v('#diName'), email: v('#diEmail'), address: v('#diAddr') } })) toast('Saved. New documents will use these.'); return; }
       if (b.dataset.doc) { let p = null; try { p = docPayload(g, b.dataset.doc); } catch (err) { return toast('Could not prepare the document: ' + String((err && err.message) || err).slice(0, 120)); } if (!p) return toast('Could not read this order.'); openDocTool('invoice.html', 'd', p); }
     });
   });
@@ -2636,7 +2643,10 @@ function itemSheet(itemId) {
     const pst = $('#iPoster', sh); if (pst) pst.onclick = () => { try { posterSheetFor(it); } catch (err) { toast('Could not open the poster: ' + String((err && err.message) || err).slice(0, 120)); } };
     const f = $('#itF', sh); if (!f) return;
     let photo = v.photo || '';
-    $('#iPhoto', sh).addEventListener('change', async e => { const file = e.target.files[0]; if (!file) return; try { photo = await shrink(file); toast('Photo ready'); } catch { toast('Could not read that photo.'); } });
+    $('#iPhoto', sh).addEventListener('change', async e => { const file = e.target.files[0]; if (!file) return; try { photo = await shrink(file); toast('Photo ready');
+      // one photo gives both: the small one for the lists and the same picture, large, as the first catalogue photo (only when there is none yet)
+      if (HOST() && HOST().photos && cpOk && !cp.length) { try { cp.unshift(await bigPhoto(file)); cpChanged = true; cpDraw(); toast('Photo ready (also as the first catalogue photo)'); } catch {} }
+    } catch { toast('Could not read that photo.'); } });
     // catalogue photos: loaded from the server when the item opens; saved (before the item) only if changed
     let cp = [], cpOk = !it, cpChanged = false, cpSaved = false;
     const cpList = $('#cpList', sh), cpAdd = $('#cpAdd', sh);
@@ -2804,18 +2814,24 @@ async function sendVideo(itemId, made, onS, job) {
 function bigPhoto(file) {   // long side at most 1000 px, not cropped; smaller again if the file is still big
   return new Promise((res, rej) => { const fr = new FileReader(); fr.onerror = rej; fr.onload = () => { const im = new Image(); im.onerror = rej; im.onload = () => {
     let out = '';
-    for (const [side, q] of [[1000, 0.68], [800, 0.62], [640, 0.55], [480, 0.5]]) {
+    for (const [side, q] of [[1400, 0.82], [1280, 0.78], [1120, 0.74], [1000, 0.7], [800, 0.64], [640, 0.56], [480, 0.5]]) {   // sharpest that still fits the 400,000-character limit of the store
       const k = Math.min(1, side / Math.max(im.width, im.height)), cv = document.createElement('canvas');
       cv.width = Math.max(1, Math.round(im.width * k)); cv.height = Math.max(1, Math.round(im.height * k));
-      cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height); out = cv.toDataURL('image/jpeg', q);
-      if (out.length <= 380000) break;
+      const cx = cv.getContext('2d'); cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high'; cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+      cx.drawImage(im, 0, 0, cv.width, cv.height); out = cv.toDataURL('image/jpeg', q);
+      if (out.length <= 385000) break;
     }
     res(out); }; im.src = fr.result; }; fr.readAsDataURL(file); });
 }
+const THUMB = 480;   // the main photo: a centred square, sharp enough for the catalogue cards and the lists (was 240)
+function squareThumb(im) {
+  const s = Math.min(im.width, im.height), cv = document.createElement('canvas'); cv.width = cv.height = THUMB; const cx = cv.getContext('2d');
+  cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high'; cx.fillStyle = '#fff'; cx.fillRect(0, 0, THUMB, THUMB);
+  cx.drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, THUMB, THUMB); return cv.toDataURL('image/jpeg', 0.8);
+}
 function shrink(file) {
   return new Promise((res, rej) => { const fr = new FileReader(); fr.onerror = rej; fr.onload = () => { const im = new Image(); im.onerror = rej; im.onload = () => {
-    const s = Math.min(im.width, im.height), cv = document.createElement('canvas'); cv.width = cv.height = 240; const cx = cv.getContext('2d');
-    cx.drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, 240, 240); res(cv.toDataURL('image/jpeg', 0.72)); }; im.src = fr.result; }; fr.readAsDataURL(file); });
+    res(squareThumb(im)); }; im.src = fr.result; }; fr.readAsDataURL(file); });
 }
 
 
@@ -3253,7 +3269,7 @@ function guessGroup(raw, name, groups) {
 function toYMD(v) { if (v instanceof Date && !isNaN(v)) return ymd(v); const s = String(v || '').trim(); return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : ''; }
 function thumbFromBlob(blob) {
   return new Promise((res) => { const url = URL.createObjectURL(blob); const im = new Image(); im.onload = () => {
-    try { const s = Math.min(im.width, im.height), cv = document.createElement('canvas'); cv.width = cv.height = 240; cv.getContext('2d').drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, 240, 240); res(cv.toDataURL('image/jpeg', 0.72)); } catch { res(''); }
+    try { res(squareThumb(im)); } catch { res(''); }
     URL.revokeObjectURL(url); }; im.onerror = () => { URL.revokeObjectURL(url); res(''); }; im.src = url; });
 }
 async function extractPhotos(buf) {
