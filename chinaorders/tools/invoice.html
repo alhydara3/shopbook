@@ -297,6 +297,7 @@ function termsKey(t) { return { receipt: 'terms_r', final: 'terms_f', order: 'te
 var KEY = 'ahChinaOrdersInvoiceV1', LOGKEY = 'ahChinaOrdersDocLogV1', CNTKEY = 'ahChinaOrdersDocN';
 var GIF = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 function $(id) { return document.getElementById(id); }
+function addDays(iso, n) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || ''); if (!m) return ''; var d = new Date(+m[1], +m[2] - 1, +m[3] + n); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
 function today() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
 function deepCopy(o) { return JSON.parse(JSON.stringify(o)); }
 
@@ -305,7 +306,7 @@ function defaults() {
   return {
     type: 'proforma',
     f: {
-      numP: 'PI-0001', numR: 'RC-0001', numF: 'INV-0001', numO: 'OF-0001', numD: 'DN-0001', date: today(), validuntil: '', duedate: '', ref: '', related: '', issuedby: 'Alhagie Hydara',
+      numP: 'PI-0001', numR: 'RC-0001', numF: 'INV-0001', numO: 'OF-0001', numD: 'DN-0001', date: today(), validuntil: addDays(today(), 3), duedate: '', ref: '', related: '', issuedby: 'Alhagie Hydara',
       client: '[Client name]', clientphone: '[Client phone]', clientemail: '[Client email]', clientaddr: '',
       currency: 'D', discount: '', taxlabel: '', taxrate: '', chargeslabel: 'Delivery', charges: '', depositpct: '75',
       paidbefore: '', received: '', paydate: today(), method: '[Payment method]',
@@ -510,7 +511,12 @@ function field(spec) {
   }
   else { i = document.createElement('input'); i.type = spec.kind === 'date' ? 'date' : 'text'; }
   i.id = 'in-' + spec.id; i.value = state.f[spec.id];
-  i.addEventListener(spec.kind === 'select' ? 'change' : 'input', function () { state.f[spec.id] = i.value; render(); saveState(); });
+  i.addEventListener(spec.kind === 'select' ? 'change' : 'input', function () {
+    if (spec.id === 'date' && /^\d{4}-\d{2}-\d{2}$/.test(i.value) && state.f.validuntil && state.f.validuntil === addDays(state.f.date, 3)) {   // "Valid until" follows the issue date (3 days) until you set your own
+      state.f.validuntil = addDays(i.value, 3); var vu = $('in-validuntil'); if (vu) vu.value = state.f.validuntil;
+    }
+    state.f[spec.id] = i.value; render(); saveState();
+  });
   d.appendChild(l); d.appendChild(i); $(spec.g).appendChild(d);
 }
 function syncPic(i) {
@@ -1145,6 +1151,7 @@ function applyStore(p) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(p.date || '')) f.date = p.date;
   if (/^[A-Za-z]{1,4}-\d{1,6}$/.test(p.number || '')) f[numKey(p.type)] = p.number;
   f.docstatus = ''; f.voidnote = '';
+  f.validuntil = addDays(f.date, 3);
   f.discount = sNum(p.discount);
   if (p.depositPct > 0 && p.depositPct <= 100) f.depositpct = String(Math.round(p.depositPct * 100) / 100);
   if (p.arrival) f.arrival = sClip(p.arrival, 80);
