@@ -418,6 +418,7 @@ function loadState() {
   var d0 = defaults().f, g = state.f;
   if (!String(g.issuedby || '').trim()) g.issuedby = d0.issuedby;
   if (String(g.selleraddress || '').charAt(0) === '[') g.selleraddress = d0.selleraddress;
+  if (String(g.payinfo || '').indexOf('[provider and number]') >= 0) g.payinfo = d0.payinfo;   // the untouched sample text is replaced by the current default
 }
 
 /* ---------- money and numbers ---------- */
@@ -1159,6 +1160,7 @@ function applyStore(p) {
     if (p.seller.name) f.issuedby = sClip(p.seller.name, 120);
     if (p.seller.email) f.selleremail = sClip(p.seller.email, 120);
     if (p.seller.address) f.selleraddress = sClip(p.seller.address, 200);
+    if (p.seller.payinfo) f.payinfo = String(p.seller.payinfo).replace(/[\u0000-\u0009\u000b-\u001f]/g, ' ').slice(0, 500);
   }
   f.paidbefore = sNum(p.paidBefore); f.received = sNum(p.received); f.method = sClip(p.method, 60);
   for (var i = 0; i < state.items.length; i++) {

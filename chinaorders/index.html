@@ -2464,7 +2464,7 @@ function docPayload(g, type) {
   const dep = itDepOwn(it0) || PO_DEP();
   const when = itWhen(it0) || PO_WHEN();
   const di = ST().docInfo || {};
-  const p = { v: 1, type, seller: { name: di.name || '', email: di.email || '', address: di.address || '' }, number: nextDocNo(type), client: g.customer || rd.customer || '', phone: g.phone || rd.phone || '', ref: rd.no, related: type === 'delivery' ? rd.no : '', date: today(), items, discount: rd.discount, depositPct: Math.round(dep * 100), arrival: when };
+  const p = { v: 1, type, seller: { name: di.name || '', email: di.email || '', address: di.address || '', payinfo: di.payinfo || '' }, number: nextDocNo(type), client: g.customer || rd.customer || '', phone: g.phone || rd.phone || '', ref: rd.no, related: type === 'delivery' ? rd.no : '', date: today(), items, discount: rd.discount, depositPct: Math.round(dep * 100), arrival: when };
   if (type === 'receipt') { p.received = received; p.paidBefore = Math.max(0, rd.paid - received); p.method = method; }
   if (type === 'final') p.paidBefore = rd.paid;
   return p;
@@ -2568,12 +2568,13 @@ function docsSheet(g) {
       <label class="f">Name<input id="diName" value="${esc((ST().docInfo || {}).name || '')}" placeholder="Alhagie Hydara"></label>
       <label class="f">Email<input id="diEmail" type="email" value="${esc((ST().docInfo || {}).email || '')}" placeholder="your email"></label>
       <label class="f">Address<input id="diAddr" value="${esc((ST().docInfo || {}).address || '')}" placeholder="Banjul, The Gambia"></label>
+      <label class="f">How to pay (bank, mobile money; one line each)<textarea id="diPay" rows="4" placeholder="Bank transfer: …&#10;Mobile money: …">${esc((ST().docInfo || {}).payinfo || '')}</textarea></label>
       <button type="button" class="btn primary block" data-disave="1">Save my details</button></details>
-    <button type="button" class="btn ghost block" data-back="1" style="margin-top:10px">Back to the orders</button><p class="small muted" style="margin:8px 0 0">App version: documents-4</p>`, sh => {
+    <button type="button" class="btn ghost block" data-back="1" style="margin-top:10px">Back to the orders</button><p class="small muted" style="margin:8px 0 0">App version: documents-5</p>`, sh => {
     sh.addEventListener('click', async e => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.dataset.back) return ordersSheet();
-      if (b.dataset.disave) { const v = id => String(($(id, sh) || {}).value || '').trim().slice(0, 120); if (await saveSettings({ docInfo: { name: v('#diName'), email: v('#diEmail'), address: v('#diAddr') } })) toast('Saved. New documents will use these.'); return; }
+      if (b.dataset.disave) { const v = id => String(($(id, sh) || {}).value || '').trim().slice(0, 120); if (await saveSettings({ docInfo: { name: v('#diName'), email: v('#diEmail'), address: v('#diAddr'), payinfo: String(($('#diPay', sh) || {}).value || '').replace(/\r/g, '').trim().slice(0, 500) } })) toast('Saved. New documents will use these.'); return; }
       if (b.dataset.doc) { let p = null; try { p = docPayload(g, b.dataset.doc); } catch (err) { return toast('Could not prepare the document: ' + String((err && err.message) || err).slice(0, 120)); } if (!p) return toast('Could not read this order.'); openDocTool('invoice.html', 'd', p); }
     });
   });
