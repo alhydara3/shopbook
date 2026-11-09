@@ -296,10 +296,21 @@ function calcCore(ship, items, sales, shipExp, adjs, mkOver) {
   sales.forEach(s => { soldBy[s.itemId] = (soldBy[s.itemId] || 0) + num(s.qty); revBy[s.itemId] = (revBy[s.itemId] || 0) + num(s.total); });
   const adjBy = {}; (adjs || []).forEach(a => { adjBy[a.itemId] = (adjBy[a.itemId] || 0) + num(a.qty); });
   const step = num(st.step) || 50, fstep = num(st.floorStep) || 25;
+  /* weight / volume / own exchange rate (all optional). Freight prices are all-in (duties included). An item without them is costed exactly the old way. */
+  const airKg = num(ship.airKg), seaUsd = num(ship.seaUsd), usdRate = num(ship.usdRate);
+  const frtOf = i => i.shipMode === 'air' ? (num(i.kg) > 0 && airKg > 0 ? num(i.kg) * airKg : 0)
+    : i.shipMode === 'sea' ? (num(i.cbm) > 0 && seaUsd > 0 && usdRate > 0 ? num(i.cbm) * seaUsd * usdRate : 0) : 0;
+  const itRate = i => num(i.rateRMB) > 0 ? num(i.rateRMB) : rate;
+  const dOwn = i => num(i.rmb) * (itRate(i) - rate) + frtOf(i);                 // change of one piece's cost against the shared method
+  const nfsDelta = sum(nfs, i => num(i.qty) * dOwn(i));
   const rows = items.map(i => {
     const forSale = i.forSale !== false;
-    const own = num(i.rmb) * mult;
-    const landed = forSale ? num(i.rmb) * saleMult : own;
+    const dO = dOwn(i), dL = forSale && saleRMB > 0 ? dO + num(i.rmb) * recover * nfsDelta / saleRMB : dO;
+    const calcOwn = num(i.rmb) * mult + dO;
+    const calcLanded = forSale ? num(i.rmb) * saleMult + dL : calcOwn;
+    const manOwn = num(i.ownManual) > 0, manLanded = num(i.landedManual) > 0 && forSale;
+    const own = manOwn ? num(i.ownManual) : calcOwn;
+    const landed = manLanded ? num(i.landedManual) : manOwn && !forSale ? own : calcLanded;
     const ownMk = hasPct(i.markupPct), mkSrc = ownMk ? 'item' : 'group';
     const noMk = forSale && !ownMk && !(i.group in MK); const mk = ownMk ? num(i.markupPct) : (MK[i.group] ?? 0.4);
     const mkTarget = forSale ? ceilTo(landed * (1 + mk), step) : 0;
@@ -310,7 +321,7 @@ function calcCore(ship, items, sales, shipExp, adjs, mkOver) {
     const lowest = forSale ? ceilTo(own * (1 + fl), fstep) : 0;
     const used = target;
     const sold = soldBy[i.id] || 0, qty = num(i.qty), adj = adjBy[i.id] || 0;
-    return { ...i, forSale, own, landed, cogsUnit: forSale ? num(i.rmb) * costMult : 0, cogsOwn: num(i.rmb) * ownMult, mk, mkSrc, mkTarget, noMk, fl, flSrc, lowAbove: forSale && lowest > target, target, ask, lowest, used, sold, adj, left: qty - sold + adj, qty,
+    return { ...i, forSale, own, landed, cogsUnit: !forSale ? 0 : manLanded ? num(i.landedManual) : num(i.rmb) * costMult + dL, cogsOwn: manOwn ? num(i.ownManual) : num(i.rmb) * ownMult + dO, calcOwn, calcLanded, manOwn, manLanded, frt: frtOf(i), mk, mkSrc, mkTarget, noMk, fl, flSrc, lowAbove: forSale && lowest > target, target, ask, lowest, used, sold, adj, left: qty - sold + adj, qty,
       thru: forSale && qty > 0 ? sold / qty : 0, revenue: revBy[i.id] || 0 };
   }).sort((a, b) => String(a.code).localeCompare(String(b.code)));
   const expenses = sum(shipExp, e => num(e.amount));
@@ -322,8 +333,11 @@ function calcCore(ship, items, sales, shipExp, adjs, mkOver) {
   const forSaleRows = rows.filter(r => r.forSale);
   const stockLeftValue = sum(forSaleRows, r => Math.max(0, r.left) * r.used);
   const projectedProfit = salesValue + stockLeftValue - payBack;
-  const fullTargetProfit = sum(forSaleRows, r => r.qty * r.used) - (base - unrec);
-  return { ship, items: rows, sales, rate, exG, exR, goodsRMB, goodsGMD, importCosts, allowance, base, mult, saleMult,
+  const fullTargetProfit = sum(forSaleRows, r => r.qty * r.used) - (base - unrec) - sum(forSaleRows, r => r.qty * (r.landed - num(r.rmb) * saleMult));
+  const anyNew = items.some(i => i.shipMode || num(i.rateRMB) > 0 || num(i.ownManual) > 0 || num(i.landedManual) > 0);
+  const chk = { anyNew, frtTotal: sum(rows, r => r.qty * r.frt), frtMissing: (airKg > 0 || seaUsd > 0) ? rows.filter(r => r.frt === 0) : [],
+    anyRate: items.some(i => num(i.rateRMB) > 0), goodsByRate: sum(items, i => num(i.qty) * num(i.rmb) * itRate(i)), costSum: sum(rows, r => r.qty * r.cogsOwn), manual: rows.filter(r => r.manOwn || r.manLanded).length };
+  return { ship, items: rows, sales, chk, rate, exG, exR, goodsRMB, goodsGMD, importCosts, allowance, base, mult, saleMult,
     nfsRMB, unrec, recover, shipmentCost, expenses, payBack, salesValue, cash, owed, stockLeftValue, projectedProfit, fullTargetProfit,
     writtenOff: sum(adjs || [], a => num(a.qty) < 0 ? num(a.value) : 0), piecesForSale: sum(forSaleRows, r => r.qty), piecesSold: sum(forSaleRows, r => r.sold), piecesLeft: sum(forSaleRows, r => Math.max(0, r.left)) };
 }
@@ -1140,8 +1154,8 @@ function backupTables() {
       Math.max(0, num(s.qty) * num(s.price) - num(s.total)), num(s.total), num(s.paid), num(s.total) - num(s.paid), s.payment || '', s.channel || '', sum(s.returns || [], x => num(x.qty)) || '', s.belowLowest ? 'yes' : '', s.note || '', s.id, ...(PO() ? [s.po ? poLabel(poSt(s)) : ''] : [])]));
   T.Customers = [['Customer ID', 'Name', 'Phone', 'Since', 'Purchases', 'Bought in total', 'Owes']].concat(S.customers.map(c => { const ss = custSales(c);
     return [c.code, c.name, c.phone || '', String(c.createdAt || '').slice(0, 10), new Set(ss.map(s => s.invoiceNo || s.id)).size, sum(ss, s => num(s.total)), sum(ss, s => num(s.total) - num(s.paid))]; }));
-  T.Items = [['Shipment', 'Code', 'Item', 'Group', 'Sizes', 'Bought', 'Sold', 'Stock changes', 'Left', 'China price (RMB)', 'Landed cost (D)', 'Target', 'Ask', 'Lowest', 'Price used', 'For sale', 'Details for buyers', ...(PO() ? ['Own deposit (%)', 'Own arrival time', 'Made to order · by sea'] : [])]];
-  S.ships.forEach(sh => calcShip(sh).items.forEach(r => T.Items.push([sh.name, r.code, r.name, r.group, r.sizes || '', r.qty, r.sold, r.adj || 0, r.left, num(r.rmb), Math.round(r.landed), r.target, r.ask, r.lowest, r.used, r.forSale ? 'yes' : 'no', r.desc || '', ...(PO() ? [itDepOwn(r) ? (isFull(itDepOwn(r)) ? 'full payment' : Math.round(itDepOwn(r) * 100)) : '', itWhenOwn(r), itSea(r) ? 'yes' : ''] : [])])));
+  T.Items = [['Shipment', 'Code', 'Item', 'Group', 'Sizes', 'Bought', 'Sold', 'Stock changes', 'Left', 'China price (RMB)', 'Landed cost (D)', 'Target', 'Ask', 'Lowest', 'Price used', 'For sale', 'Details for buyers', 'Shipped by', 'kg per piece', 'CBM per piece', 'Own rate (D per RMB)', 'Own cost (D)', 'Landed by hand', 'Own cost by hand', ...(PO() ? ['Own deposit (%)', 'Own arrival time', 'Made to order · by sea'] : [])]];
+  S.ships.forEach(sh => calcShip(sh).items.forEach(r => T.Items.push([sh.name, r.code, r.name, r.group, r.sizes || '', r.qty, r.sold, r.adj || 0, r.left, num(r.rmb), Math.round(r.landed), r.target, r.ask, r.lowest, r.used, r.forSale ? 'yes' : 'no', r.desc || '', r.shipMode || '', num(r.kg) || '', num(r.cbm) || '', num(r.rateRMB) || '', Math.round(r.own), num(r.landedManual) || '', num(r.ownManual) || '', ...(PO() ? [itDepOwn(r) ? (isFull(itDepOwn(r)) ? 'full payment' : Math.round(itDepOwn(r) * 100)) : '', itWhenOwn(r), itSea(r) ? 'yes' : ''] : [])])));
   T.Shipments = [['Shipment', 'Status', 'Ordered', 'Arrived', 'Rate (D per RMB)', 'Goods (RMB)', 'Goods (D)', 'Import costs (D)', 'Expenses (D)', 'Sales (D)', 'Cash in (D)', 'Owed (D)']]
     .concat(S.ships.map(sh => { const c = calcShip(sh); return [sh.name, sh.status || '', sh.ordered || '', sh.arrived || '', +c.rate.toFixed(3), c.goodsRMB, Math.round(c.goodsGMD), Math.round(c.importCosts), Math.round(c.expenses), Math.round(c.salesValue), Math.round(c.cash), Math.round(c.owed)]; }));
   T.Expenses = [['Date', 'Category', 'Amount (D)', 'Paid with', 'Shipment', 'Note']].concat(S.expenses.slice().sort((a, b) => String(a.date).localeCompare(String(b.date))).map(e => [e.date, e.category, num(e.amount), e.method || 'Cash', shipName(e.ship) || 'Whole business', e.note || '']));
@@ -2223,7 +2237,7 @@ function itemSheet(itemId) {
   const st = ST(); const groups = Object.keys(st.markups || {});
   const v = it || { code: '', name: '', group: groups[0] || 'General', sizes: '', qty: 1, rmb: '', forSale: true, photo: '', finalPrice: '', market: '' };
   const hist = it ? S.sales.filter(s => s.itemId === it.id).sort((a, b) => String(b.date).localeCompare(String(a.date))) : [];
-  const info = it && it.forSale ? OWN() ? `${priceTrio(it)}<div class="kv small"><span>China price</span><b>${num(it.rmb)} RMB</b><span>Landed cost (used for target)</span><b>${D(it.landed)}</b><span>Own cost (used for lowest)</span><b>${D(it.own)}</b><span>Lowest = own cost + (${it.flSrc === 'item' ? 'this item' : it.flSrc === 'group' ? esc(it.group) : 'general'})</span><b>${P(it.fl)}</b><span>Markup (${it.mkSrc === 'item' ? 'this item' : esc(it.group)})</span><b>${P(it.mk)}</b>${num(it.finalPrice) > 0 ? `<span>Target from markup (not used: own selling price ${D(it.finalPrice)} is set)</span><b>${D(it.mkTarget)}</b>` : ''}<span>Sold / bought</span><b>${it.sold} / ${it.qty}</b></div>` : `${priceTrio(it)}<div class="kv small"><span>Sold / bought</span><b>${it.sold} / ${it.qty}</b></div>` : '';
+  const info = it && it.forSale ? OWN() ? `${priceTrio(it)}<div class="kv small"><span>China price</span><b>${num(it.rmb)} RMB</b><span>Landed cost (used for target)</span><b>${D(it.landed)}${it.manLanded ? ' (by hand)' : ''}</b><span>Own cost (used for lowest)</span><b>${D(it.own)}${it.manOwn ? ' (by hand)' : ''}</b>${it.manLanded || it.manOwn ? `<span>Worked out from the shipment</span><b>${D(it.calcLanded)} / ${D(it.calcOwn)}</b>` : ''}${it.frt > 0 ? `<span>Shipping cost per piece (by ${it.shipMode === 'air' ? 'kg' : 'CBM'})</span><b>${D(it.frt)}</b>` : ''}${num(it.rateRMB) > 0 ? `<span>Rate for this item</span><b>${it.rateRMB} per RMB</b>` : ''}<span>Lowest = own cost + (${it.flSrc === 'item' ? 'this item' : it.flSrc === 'group' ? esc(it.group) : 'general'})</span><b>${P(it.fl)}</b><span>Markup (${it.mkSrc === 'item' ? 'this item' : esc(it.group)})</span><b>${P(it.mk)}</b>${num(it.finalPrice) > 0 ? `<span>Target from markup (not used: own selling price ${D(it.finalPrice)} is set)</span><b>${D(it.mkTarget)}</b>` : ''}<span>Sold / bought</span><b>${it.sold} / ${it.qty}</b></div>` : `${priceTrio(it)}<div class="kv small"><span>Sold / bought</span><b>${it.sold} / ${it.qty}</b></div>` : '';
   const ro = !OWN();
   const adjs = it ? S.adjustments.filter(a => a.itemId === it.id).sort((a, b) => String(b.date).localeCompare(String(a.date))) : [];
   openSheet(it ? it.name : 'Add item', `${it ? `<div class="row" style="flex-wrap:nowrap">${img(it, 'thumb lg')}<div class="small muted">${esc(it.code)} · ${esc(it.group)}${it.sizes ? '<br>' + esc(it.sizes) : ''}</div></div>${it.catHide === true && it.forSale ? '<p class="small" style="margin:0"><span class="pill">Not in the public catalogue</span></p>' : ''}${PO() && (itSea(it) || itOwnPo(it)) ? `<p class="small" style="margin:0">${itSea(it) ? `<span class="pill">${esc(SEA_LABEL)}</span> ` : ''}${itOwnPo(it) ? esc(`This product: ${depWord(itDep(it))} · ${poArrive(itWhen(it))}`) : ''}</p>` : ''}${it.desc ? `<div><h3 style="margin:0 0 4px">Details for buyers</h3><p class="idesc">${esc(it.desc)}</p></div>` : ''}` : ''}${info}
@@ -2246,6 +2260,17 @@ function itemSheet(itemId) {
         <label class="f">Own selling price (D) <span class="h">optional, replaces target (ask = this + bargaining room)</span><input id="iFinal" inputmode="decimal" value="${esc(v.finalPrice || '')}"></label></div>
       <label class="f">Markup (%) <span class="h">optional, only for this item; empty = use the group's ${P(grpMk(v.group))}</span><input id="iMk" inputmode="decimal" value="${hasPct(v.markupPct) ? +(num(v.markupPct) * 100).toFixed(2) : ''}" placeholder="${Math.round(grpMk(v.group) * 100)}"></label>
       <label class="f">Lowest = own cost + (%) <span class="h">optional, only for this item; empty = use the group's ${P(floorFor({ group: v.group }, st)[0])}</span><input id="iFloor" inputmode="decimal" value="${hasPct(v.floorPct) ? Math.round(num(v.floorPct) * 100) : ''}" placeholder="${Math.round(floorFor({ group: v.group }, st)[0] * 100)}"></label>
+      <div class="f cpbox"><b>Weight, size and rate</b><span class="h">optional. Gives this item its own shipping cost and exchange rate. Leave empty to share the costs by China price as before.</span>
+        <div class="fgrid"><label class="f">Shipped by<select id="iMode"><option value="">Not set</option><option value="air"${v.shipMode === 'air' ? ' selected' : ''}>Air (price per kg)</option><option value="sea"${v.shipMode === 'sea' ? ' selected' : ''}>Sea (price per CBM)</option></select></label>
+          <label class="f">Rate for this item (D per RMB)<input id="iRate" inputmode="decimal" value="${num(v.rateRMB) > 0 ? esc(v.rateRMB) : ''}" placeholder="${esc(+(it ? c.rate : num(ship.planRate)).toFixed(3))}"></label></div>
+        <div class="fgrid"><label class="f">Weight of 1 piece (kg)<input id="iKg" inputmode="decimal" value="${num(v.kg) > 0 ? esc(v.kg) : ''}"></label>
+          <label class="f">Volume of 1 piece (CBM)<input id="iCbm" inputmode="decimal" value="${num(v.cbm) > 0 ? esc(v.cbm) : ''}"></label></div>
+        <div class="fgrid" style="grid-template-columns:repeat(3,1fr)"><label class="f">Length (cm)<input id="iDL" inputmode="decimal" value="${num(v.dimL) > 0 ? esc(v.dimL) : ''}"></label><label class="f">Width (cm)<input id="iDW" inputmode="decimal" value="${num(v.dimW) > 0 ? esc(v.dimW) : ''}"></label><label class="f">Height (cm)<input id="iDH" inputmode="decimal" value="${num(v.dimH) > 0 ? esc(v.dimH) : ''}"></label></div>
+        <span class="h">Type length × width × height of one piece and the CBM is worked out for you.</span>
+        <div id="iFrt" class="small muted"></div></div>
+      <div class="f cpbox"><b>Cost of this item, by hand</b><span class="h">optional, last resort. Empty = worked out from the shipment (shown in grey). Clear the box to go back to the worked-out cost.</span>
+        <div class="fgrid"><label class="f">Landed cost (D) <span class="h">used for target</span><input id="iLandM" inputmode="decimal" value="${num(v.landedManual) > 0 ? esc(v.landedManual) : ''}" placeholder="${it ? Math.round(it.calcLanded) : ''}"></label>
+          <label class="f">Own cost (D) <span class="h">used for lowest</span><input id="iOwnM" inputmode="decimal" value="${num(v.ownManual) > 0 ? esc(v.ownManual) : ''}" placeholder="${it ? Math.round(it.calcOwn) : ''}"></label></div></div>
       <label class="row" style="flex-wrap:nowrap"><input type="checkbox" id="iSale" style="width:22px;min-height:22px" ${v.forSale !== false ? 'checked' : ''}> For sale (untick for shop equipment like mannequins)</label>
       ${HOST() ? `<label class="row" style="flex-wrap:nowrap"><input type="checkbox" id="iCat" style="width:22px;min-height:22px" ${v.catHide !== true ? 'checked' : ''}> Show in the public catalogue (untick to keep this item off the catalogue)</label>` : ''}
       <label class="f">Photo <span class="h">optional, the small photo used everywhere in the Shop Book</span><input id="iPhoto" type="file" accept="image/*"></label>
@@ -2262,6 +2287,14 @@ function itemSheet(itemId) {
     const aj = $('#iAdj', sh); if (aj) aj.onclick = () => { closeSheet(); adjSheet(it.id); };
     const pst = $('#iPoster', sh); if (pst) pst.onclick = () => { try { posterSheetFor(it); } catch (err) { toast('Could not open the poster: ' + String((err && err.message) || err).slice(0, 120)); } };
     const f = $('#itF', sh); if (!f) return;
+    { const g = id => num($(id, sh).value), cbmEl = $('#iCbm', sh);
+      const frt = () => { const m = $('#iMode', sh).value, kg = g('#iKg'), cb = g('#iCbm'), A = num(ship.airKg), U = num(ship.seaUsd), X = num(ship.usdRate); let t = '';
+        if (m === 'air') t = !(A > 0) ? 'Set the air price per kg in Edit shipment first.' : !(kg > 0) ? 'Type the weight in kg.' : `Shipping cost: ${D(kg * A)} per piece (${kg} kg × ${D(A)} per kg).`;
+        else if (m === 'sea') t = !(U > 0 && X > 0) ? 'Set the sea price per CBM and the D per USD rate in Edit shipment first.' : !(cb > 0) ? 'Type the volume in CBM, or the length, width and height.' : `Shipping cost: ${D(cb * U * X)} per piece (${cb} CBM × ${U} USD × ${X}).`;
+        $('#iFrt', sh).textContent = t; };
+      const dims = () => { const L = g('#iDL'), W = g('#iDW'), H = g('#iDH'); if (L > 0 && W > 0 && H > 0) cbmEl.value = +(L * W * H / 1e6).toFixed(5); frt(); };
+      ['#iDL', '#iDW', '#iDH'].forEach(id => $(id, sh).addEventListener('input', dims));
+      ['#iMode', '#iKg', '#iCbm'].forEach(id => $(id, sh).addEventListener('input', frt)); $('#iMode', sh).addEventListener('change', frt); frt(); }
     let photo = v.photo || '';
     $('#iPhoto', sh).addEventListener('change', async e => { const file = e.target.files[0]; if (!file) return; try { photo = await shrink(file); toast('Photo ready');
       // pre-order store: the same picture, large, is kept as the first catalogue photo (the catalogue then shows the large one, not the small one)
@@ -2334,6 +2367,10 @@ function itemSheet(itemId) {
         market: num($('#iMkt', sh).value) || null, finalPrice: num($('#iFinal', sh).value) || null, floorPct: String($('#iFloor', sh).value).trim() === '' ? null : num($('#iFloor', sh).value) / 100,
         markupPct: String($('#iMk', sh).value).trim() === '' ? null : num($('#iMk', sh).value) / 100,
         desc: String($('#iDesc', sh).value).replace(/\r\n?/g, '\n').trim().slice(0, 1000) };
+      { const m = $('#iMode', sh).value, f = id => num($(id, sh).value);
+        if (m) d.shipMode = m; if (f('#iKg') > 0) d.kg = f('#iKg'); if (f('#iCbm') > 0) d.cbm = f('#iCbm');
+        if (f('#iDL') > 0) d.dimL = f('#iDL'); if (f('#iDW') > 0) d.dimW = f('#iDW'); if (f('#iDH') > 0) d.dimH = f('#iDH');
+        if (f('#iRate') > 0) d.rateRMB = f('#iRate'); if (f('#iLandM') > 0) d.landedManual = f('#iLandM'); if (f('#iOwnM') > 0) d.ownManual = f('#iOwnM'); }
       if ($('#iCat', sh)) d.catHide = !$('#iCat', sh).checked; else if (it && it.catHide) d.catHide = it.catHide;
       if ($('#iDep', sh)) {   // order store: the owner's own deposit % / arrival time / label for this product (empty = the store's)
         const ds = $('#iFull', sh).checked ? '' : String($('#iDep', sh).value).replace('%', '').trim(), dv = Math.round(num(ds));
@@ -2494,6 +2531,14 @@ function shipSheet(shipId) {
     selling: { online: 0, rent: 0, months: 3, setup: 0 }, recoverPct: 1, goals: [] }));
   delete d.id;
   const STATUS = ['Planning', 'Ordered', 'In transit', 'Selling', 'Closed'];
+  const chkHtml = () => { if (!ex) return ''; const c = calcShip(ex), k = c.chk; if (!k.anyNew && !(k.frtTotal > 0)) return '';
+    const L = [];
+    if (k.frtTotal > 0) L.push(`Shipping by weight or volume: <b>${D(k.frtTotal)}</b>. Shipping and other costs you entered above: <b>${D(c.importCosts)}</b> (these are in addition, so make sure they are different costs).`);
+    if (k.frtMissing.length) L.push(`${k.frtMissing.length} item${k.frtMissing.length > 1 ? 's have' : ' has'} no weight or volume, so ${k.frtMissing.length > 1 ? 'they share' : 'it shares'} the costs above by China price: ${k.frtMissing.slice(0, 6).map(r => esc(r.code)).join(', ')}${k.frtMissing.length > 6 ? '…' : ''}.`);
+    if (k.anyRate) { const df = k.goodsByRate - c.goodsGMD; L.push(`Goods at each item's own rate: <b>${D(k.goodsByRate)}</b>. Goods at the rate of the money you exchanged: <b>${D(c.goodsGMD)}</b>. Difference <b>${df >= 0 ? '+' : '−'}${D(Math.abs(df))}</b>${Math.abs(df) > 0.02 * Math.max(1, c.goodsGMD) ? ' (more than 2%: check the item rates)' : ''}.`); }
+    if (k.manual) L.push(`${k.manual} item${k.manual > 1 ? 's have' : ' has'} a cost typed by hand.`);
+    L.push(`Item costs added up (without selling costs): <b>${D(k.costSum)}</b>. Shipment goods + import costs: <b>${D(c.goodsGMD + c.importCosts)}</b>.`);
+    return `<div class="note" style="margin-top:8px"><b>Check</b><br>${L.join('<br>')}</div>`; };
   const draw = () => `<form id="shF" class="list" style="gap:14px">
     <div class="fgrid"><label class="f">Name<input data-k="name" value="${esc(d.name)}"></label><label class="f">Status<select data-k="status">${STATUS.map(s => `<option${s === d.status ? ' selected' : ''}>${s}</option>`).join('')}</select></label></div>
     <div class="fgrid"><label class="f">Started buying<input type="date" data-k="ordered" value="${esc(d.ordered)}"></label><label class="f">Arrived in ${esc(PLACE())}<input type="date" data-k="arrived" value="${esc(d.arrived || '')}"></label>
@@ -2506,6 +2551,9 @@ function shipSheet(shipId) {
       <div class="row"><button type="button" class="btn" data-add="costs">Add cost</button></div>
       ${shipHelperHtml('h')}
       <div class="row" style="margin-top:6px"><button type="button" class="btn" id="hShip">Add shipping cost</button><button type="button" class="btn" id="hCom">Add 10% commission</button></div></div>
+    <div class="panel"><h3>Shipping price by weight or volume</h3><p class="note">Optional. All-in prices, duties included. Items with a weight (air) or volume (sea) get their own shipping cost; the rest share the costs above as before. <b>Do not also enter the same shipping in Import costs</b>, or it is counted twice.</p>
+      <div class="fgrid"><label class="f">Air (D per kg)<input data-k="airKg" inputmode="decimal" value="${num(d.airKg) > 0 ? esc(d.airKg) : ''}"></label><label class="f">Sea (USD per CBM)<input data-k="seaUsd" inputmode="decimal" value="${num(d.seaUsd) > 0 ? esc(d.seaUsd) : ''}"></label><label class="f">D per 1 USD <span class="h">for sea</span><input data-k="usdRate" inputmode="decimal" value="${num(d.usdRate) > 0 ? esc(d.usdRate) : ''}"></label></div>
+      ${chkHtml()}</div>
     <div class="panel"><h3>Expected selling costs</h3><p class="note">Only used to set prices. Record the real costs in Money → Expenses.</p>
       <div class="fgrid"><label class="f">Online selling (D)<input data-k="selling.online" inputmode="decimal" value="${esc(d.selling.online)}"></label><label class="f">Rent per month (D)<input data-k="selling.rent" inputmode="decimal" value="${esc(d.selling.rent)}"></label><label class="f">Months of rent<input data-k="selling.months" inputmode="decimal" value="${esc(d.selling.months)}"></label><label class="f">Shop setup (D)<input data-k="selling.setup" inputmode="decimal" value="${esc(d.selling.setup)}"></label></div>
       <label class="f" style="margin-top:10px">Share of shop equipment cost this stock pays back (%)<input data-k="recoverPct" data-pct="1" inputmode="decimal" value="${Math.round(num(d.recoverPct) * 100)}"></label></div>

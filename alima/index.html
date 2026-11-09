@@ -677,10 +677,21 @@ function calcCore(ship, items, sales, shipExp, adjs, mkOver) {
   sales.forEach(s => { soldBy[s.itemId] = (soldBy[s.itemId] || 0) + num(s.qty); revBy[s.itemId] = (revBy[s.itemId] || 0) + num(s.total); });
   const adjBy = {}; (adjs || []).forEach(a => { adjBy[a.itemId] = (adjBy[a.itemId] || 0) + num(a.qty); });
   const step = num(st.step) || 50, fstep = num(st.floorStep) || 25;
+  /* weight / volume / own exchange rate (all optional). Freight prices are all-in (duties included). An item without them is costed exactly the old way. */
+  const airKg = num(ship.airKg), seaUsd = num(ship.seaUsd), usdRate = num(ship.usdRate);
+  const frtOf = i => i.shipMode === 'air' ? (num(i.kg) > 0 && airKg > 0 ? num(i.kg) * airKg : 0)
+    : i.shipMode === 'sea' ? (num(i.cbm) > 0 && seaUsd > 0 && usdRate > 0 ? num(i.cbm) * seaUsd * usdRate : 0) : 0;
+  const itRate = i => num(i.rateRMB) > 0 ? num(i.rateRMB) : rate;
+  const dOwn = i => num(i.rmb) * (itRate(i) - rate) + frtOf(i);                 // change of one piece's cost against the shared method
+  const nfsDelta = sum(nfs, i => num(i.qty) * dOwn(i));
   const rows = items.map(i => {
     const forSale = i.forSale !== false;
-    const own = num(i.rmb) * mult;
-    const landed = forSale ? num(i.rmb) * saleMult : own;
+    const dO = dOwn(i), dL = forSale && saleRMB > 0 ? dO + num(i.rmb) * recover * nfsDelta / saleRMB : dO;
+    const calcOwn = num(i.rmb) * mult + dO;
+    const calcLanded = forSale ? num(i.rmb) * saleMult + dL : calcOwn;
+    const manOwn = num(i.ownManual) > 0, manLanded = num(i.landedManual) > 0 && forSale;
+    const own = manOwn ? num(i.ownManual) : calcOwn;
+    const landed = manLanded ? num(i.landedManual) : manOwn && !forSale ? own : calcLanded;
     const ownMk = hasPct(i.markupPct), mkSrc = ownMk ? 'item' : 'group';
     const noMk = forSale && !ownMk && !(i.group in MK); const mk = ownMk ? num(i.markupPct) : (MK[i.group] ?? 0.4);
     const mkTarget = forSale ? ceilTo(landed * (1 + mk), step) : 0;
@@ -691,7 +702,7 @@ function calcCore(ship, items, sales, shipExp, adjs, mkOver) {
     const lowest = forSale ? ceilTo(own * (1 + fl), fstep) : 0;
     const used = target;
     const sold = soldBy[i.id] || 0, qty = num(i.qty), adj = adjBy[i.id] || 0;
-    return { ...i, forSale, own, landed, cogsUnit: forSale ? num(i.rmb) * costMult : 0, cogsOwn: num(i.rmb) * ownMult, mk, mkSrc, mkTarget, noMk, fl, flSrc, lowAbove: forSale && lowest > target, target, ask, lowest, used, sold, adj, left: qty - sold + adj, qty,
+    return { ...i, forSale, own, landed, cogsUnit: !forSale ? 0 : manLanded ? num(i.landedManual) : num(i.rmb) * costMult + dL, cogsOwn: manOwn ? num(i.ownManual) : num(i.rmb) * ownMult + dO, calcOwn, calcLanded, manOwn, manLanded, frt: frtOf(i), mk, mkSrc, mkTarget, noMk, fl, flSrc, lowAbove: forSale && lowest > target, target, ask, lowest, used, sold, adj, left: qty - sold + adj, qty,
       thru: forSale && qty > 0 ? sold / qty : 0, revenue: revBy[i.id] || 0 };
   }).sort((a, b) => String(a.code).localeCompare(String(b.code)));
   const expenses = sum(shipExp, e => num(e.amount));
@@ -703,8 +714,11 @@ function calcCore(ship, items, sales, shipExp, adjs, mkOver) {
   const forSaleRows = rows.filter(r => r.forSale);
   const stockLeftValue = sum(forSaleRows, r => Math.max(0, r.left) * r.used);
   const projectedProfit = salesValue + stockLeftValue - payBack;
-  const fullTargetProfit = sum(forSaleRows, r => r.qty * r.used) - (base - unrec);
-  return { ship, items: rows, sales, rate, exG, exR, goodsRMB, goodsGMD, importCosts, allowance, base, mult, saleMult,
+  const fullTargetProfit = sum(forSaleRows, r => r.qty * r.used) - (base - unrec) - sum(forSaleRows, r => r.qty * (r.landed - num(r.rmb) * saleMult));
+  const anyNew = items.some(i => i.shipMode || num(i.rateRMB) > 0 || num(i.ownManual) > 0 || num(i.landedManual) > 0);
+  const chk = { anyNew, frtTotal: sum(rows, r => r.qty * r.frt), frtMissing: (airKg > 0 || seaUsd > 0) ? rows.filter(r => r.frt === 0) : [],
+    anyRate: items.some(i => num(i.rateRMB) > 0), goodsByRate: sum(items, i => num(i.qty) * num(i.rmb) * itRate(i)), costSum: sum(rows, r => r.qty * r.cogsOwn), manual: rows.filter(r => r.manOwn || r.manLanded).length };
+  return { ship, items: rows, sales, chk, rate, exG, exR, goodsRMB, goodsGMD, importCosts, allowance, base, mult, saleMult,
     nfsRMB, unrec, recover, shipmentCost, expenses, payBack, salesValue, cash, owed, stockLeftValue, projectedProfit, fullTargetProfit,
     writtenOff: sum(adjs || [], a => num(a.qty) < 0 ? num(a.value) : 0), piecesForSale: sum(forSaleRows, r => r.qty), piecesSold: sum(forSaleRows, r => r.sold), piecesLeft: sum(forSaleRows, r => Math.max(0, r.left)) };
 }
@@ -1510,7 +1524,7 @@ function cashupSheet() {
 
 /* ---------- backups ---------- */
 const BK_COLLS = [['settings', () => S.settings ? [{ ...S.settings, id: 'main' }] : []], ['shipments', () => S.ships], ['items', () => S.items], ['sales', () => S.sales], ['customers', () => S.customers],
-  ['expenses', () => S.expenses], ['adjustments', () => S.adjustments], ['cashups', () => S.cashups], ['counts', () => S.counts], ['log', () => S.log]];
+  ['expenses', () => S.expenses], ['adjustments', () => S.adjustments], ['cashups', () => S.cashups], ['counts', () => S.counts], ['log', () => S.log], ['docs', () => S.docs || []]];
 function backupTables() {
   const shipName = id => (S.ships.find(s => s.id === id) || {}).name || '';
   const itemName = s => (S.items.find(i => i.id === s.itemId) || {}).name || s.name || '';
@@ -1521,8 +1535,8 @@ function backupTables() {
       Math.max(0, num(s.qty) * num(s.price) - num(s.total)), num(s.total), num(s.paid), num(s.total) - num(s.paid), s.payment || '', s.channel || '', sum(s.returns || [], x => num(x.qty)) || '', s.belowLowest ? 'yes' : '', s.note || '', s.id, ...(PO() ? [s.po ? poLabel(poSt(s)) : ''] : [])]));
   T.Customers = [['Customer ID', 'Name', 'Phone', 'Since', 'Purchases', 'Bought in total', 'Owes']].concat(S.customers.map(c => { const ss = custSales(c);
     return [c.code, c.name, c.phone || '', String(c.createdAt || '').slice(0, 10), new Set(ss.map(s => s.invoiceNo || s.id)).size, sum(ss, s => num(s.total)), sum(ss, s => num(s.total) - num(s.paid))]; }));
-  T.Items = [['Shipment', 'Code', 'Item', 'Group', 'Sizes', 'Bought', 'Sold', 'Stock changes', 'Left', 'China price (RMB)', 'Landed cost (D)', 'Target', 'Ask', 'Lowest', 'Price used', 'For sale', 'Details for buyers', ...(PO() ? ['Own deposit (%)', 'Own arrival time', 'Made to order · by sea'] : [])]];
-  S.ships.forEach(sh => calcShip(sh).items.forEach(r => T.Items.push([sh.name, r.code, r.name, r.group, r.sizes || '', r.qty, r.sold, r.adj || 0, r.left, num(r.rmb), Math.round(r.landed), r.target, r.ask, r.lowest, r.used, r.forSale ? 'yes' : 'no', r.desc || '', ...(PO() ? [itDepOwn(r) ? (isFull(itDepOwn(r)) ? 'full payment' : Math.round(itDepOwn(r) * 100)) : '', itWhenOwn(r), itSea(r) ? 'yes' : ''] : [])])));
+  T.Items = [['Shipment', 'Code', 'Item', 'Group', 'Sizes', 'Bought', 'Sold', 'Stock changes', 'Left', 'China price (RMB)', 'Landed cost (D)', 'Target', 'Ask', 'Lowest', 'Price used', 'For sale', 'Details for buyers', 'Shipped by', 'kg per piece', 'CBM per piece', 'Own rate (D per RMB)', 'Own cost (D)', 'Landed by hand', 'Own cost by hand', ...(PO() ? ['Own deposit (%)', 'Own arrival time', 'Made to order · by sea'] : [])]];
+  S.ships.forEach(sh => calcShip(sh).items.forEach(r => T.Items.push([sh.name, r.code, r.name, r.group, r.sizes || '', r.qty, r.sold, r.adj || 0, r.left, num(r.rmb), Math.round(r.landed), r.target, r.ask, r.lowest, r.used, r.forSale ? 'yes' : 'no', r.desc || '', r.shipMode || '', num(r.kg) || '', num(r.cbm) || '', num(r.rateRMB) || '', Math.round(r.own), num(r.landedManual) || '', num(r.ownManual) || '', ...(PO() ? [itDepOwn(r) ? (isFull(itDepOwn(r)) ? 'full payment' : Math.round(itDepOwn(r) * 100)) : '', itWhenOwn(r), itSea(r) ? 'yes' : ''] : [])])));
   T.Shipments = [['Shipment', 'Status', 'Ordered', 'Arrived', 'Rate (D per RMB)', 'Goods (RMB)', 'Goods (D)', 'Import costs (D)', 'Expenses (D)', 'Sales (D)', 'Cash in (D)', 'Owed (D)']]
     .concat(S.ships.map(sh => { const c = calcShip(sh); return [sh.name, sh.status || '', sh.ordered || '', sh.arrived || '', +c.rate.toFixed(3), c.goodsRMB, Math.round(c.goodsGMD), Math.round(c.importCosts), Math.round(c.expenses), Math.round(c.salesValue), Math.round(c.cash), Math.round(c.owed)]; }));
   T.Expenses = [['Date', 'Category', 'Amount (D)', 'Paid with', 'Shipment', 'Note']].concat(S.expenses.slice().sort((a, b) => String(a.date).localeCompare(String(b.date))).map(e => [e.date, e.category, num(e.amount), e.method || 'Cash', shipName(e.ship) || 'Whole business', e.note || '']));
@@ -1531,6 +1545,8 @@ function backupTables() {
   T['Monthly profit'] = [['Month', 'Sales (D)', 'Pieces', 'Cost of goods (D)', 'Gross profit (D)', 'Written off (D)', 'Expenses (D)', 'Profit (D)', 'Money received (D)']]
     .concat(monthlyProfit(true).slice().reverse().map(m => [m.ym, Math.round(m.sales), m.pieces, Math.round(m.cogs), Math.round(m.gross), Math.round(m.write), Math.round(m.exp), Math.round(m.net), Math.round(m.cash)]));
   T.Log = [['When', 'Who', 'What', 'Details']].concat(S.log.slice().sort((a, b) => String(a.at).localeCompare(String(b.at))).map(e => [String(e.at).replace('T', ' ').slice(0, 16), whoName(e.by), e.action, e.summary || '']));
+  if (PO() && OWN()) T.Documents = [['Number', 'Type', 'Customer', 'Order', 'Date', 'Total (D)', 'Received (D)', 'Balance (D)', 'State', 'Void', 'Void note', 'Made at']]
+    .concat((S.docs || []).slice().sort((a, b) => String(a.at || '').localeCompare(String(b.at || ''))).map(d => [d.no || '', d.label || d.type || '', d.customer || '', d.ref || '', d.date || '', d.total === '' ? '' : num(d.total), d.received === '' ? '' : num(d.received), d.balance === '' ? '' : num(d.balance), d.state || '', d.voided || '', d.voidNote || '', String(d.at || '').replace('T', ' ').slice(0, 16)]));
   return T;
 }
 async function markBackup(kind) { try { await S.db.doc('meta/backup').set({ at: new Date().toISOString(), by: S.uid || '', kind }); } catch {} }
@@ -1558,10 +1574,11 @@ async function backupToSheet(btn) {
   const id = ST().backupSheetId; if (!id) return toast('No backup Google Sheet is set.');
   btn.disabled = true; const old = btn.textContent; btn.textContent = 'Copying…';
   try {
-    const T = backupTables(); const tabs = Object.keys(T);
+    const T = backupTables(); const tabs = Object.keys(T).filter(x => x !== 'Documents');   // the Documents tab is added only if it exists in the backup Sheet (below)
     await gs('batch_clear_values', { spreadsheetId: id, ranges: tabs.map(t => `'${t}'!A1:Z20000`) });
     for (const t of tabs) { btn.textContent = 'Copying ' + t + '…'; const pc = T[t][0].indexOf('Phone');
       await gs('update_values', { spreadsheetId: id, range: `'${t}'!A1`, values: T[t].map((r, i) => r.map((v, j) => gsCell(v, i > 0 && j === pc))) }); }
+    if (T.Documents) { try { btn.textContent = 'Copying Documents…'; await gs('batch_clear_values', { spreadsheetId: id, ranges: ["'Documents'!A1:Z20000"] }); await gs('update_values', { spreadsheetId: id, range: "'Documents'!A1", values: T.Documents.map(r => r.map(v => gsCell(v, false))) }); } catch {} }
     await gs('update_values', { spreadsheetId: id, range: "'About'!A1:B3", values: [[APP.book + ': backup copy', ''], ['Last copied', new Date().toLocaleString('en-GB', { timeZone: TZ }) + ' (Gambia time)'], ['Rows', tabs.map(t => `${t} ${T[t].length - 1}`).join(', ')]] });
     await markBackup('sheet'); logEvent('Backup', '', 'Copied everything to the backup Google Sheet'); toast('Backup copied to Google Sheets');
   } catch (e) { toast(gsErr(e)); }
@@ -1744,7 +1761,7 @@ function poCard(g) {
       <span class="pill ${g.status === 'arrived' ? 'warn' : g.status === 'collected' ? 'ok' : ''}">${esc(poLabel(g.status))}</span></div>
     <div class="small" style="margin-top:6px">${poItems(g).map(esc).join('<br>') || 'All items returned'}</div>${poIdx(g.status) < 3 ? `<div class="small muted" style="margin-top:2px">${esc((s => s.charAt(0).toUpperCase() + s.slice(1))(poArrFor(g.list)))}</div>` : ''}
     <div class="small" style="margin-top:4px">Total <b>${D(g.total)}</b> · paid ${D(g.paid)} · ${g.due > 0.5 ? `<b style="color:var(--warn)">balance ${D(g.due)}</b>` : '<b style="color:var(--target)">paid in full</b>'}</div>
-    ${S.canWrite ? `<div class="fgrid" style="margin-top:8px">${next ? `<button type="button" class="btn primary" data-ponext="${esc(g.k)}">${esc(PO_STEPS[i][2])}</button>` : ''}${g.due > 0.5 ? `<button type="button" class="btn" data-popay="${esc(g.k)}">Record payment</button>` : ''}<button type="button" class="btn ghost" data-porcpt="${esc(g.list[0].id)}">Receipt</button>${tell}</div>
+    ${S.canWrite ? `<div class="fgrid" style="margin-top:8px">${next ? `<button type="button" class="btn primary" data-ponext="${esc(g.k)}">${esc(PO_STEPS[i][2])}</button>` : ''}${g.due > 0.5 ? `<button type="button" class="btn" data-popay="${esc(g.k)}">Record payment</button>` : ''}<button type="button" class="btn ghost" data-porcpt="${esc(g.list[0].id)}">Receipt</button>${OWN() ? `<button type="button" class="btn ghost" data-podocs="${esc(g.k)}">Documents</button>` : ''}${tell}</div>
     <div class="confirm" data-pocf="${esc(g.k)}" hidden><p style="margin:0 0 8px">${esc(g.customer || 'The buyer')} still owes <b>${D(g.due)}</b>. Record the payment first, or mark the order as collected anyway (the balance stays in the Credit tab).</p><button type="button" class="btn danger" data-poyes="${esc(g.k)}">Mark as collected anyway</button></div>` : ''}</div>`;
 }
 async function poMove(groups, to) {
@@ -1773,6 +1790,7 @@ function ordersSheet(filt) {
     ${(filt === 'open' || filt === 'new') && needRows.length ? `<div class="alert info" style="margin-top:10px"><b class="i">i</b><div style="min-width:0;flex:1"><b>To order from China</b> (orders waiting)
       <div class="list" style="margin-top:6px">${needRows.map(x => `<div class="spread small"><span>${esc(x.code)} ${esc(x.name)}${x.size ? ' · ' + esc(x.size) : ''}${x.sea ? ' · by sea' : ''}</span><b>${x.qty} pc${x.qty === 1 ? '' : 's'}</b></div>`).join('')}</div></div></div>` : ''}
     ${S.canWrite && step && step[2] && cnt(filt) > 1 ? `<button type="button" class="btn block" style="margin-top:10px" data-pomove="${filt}">${esc(step[2])}: all ${cnt(filt)} orders</button>` : ''}
+    ${OWN() ? `<button type="button" class="btn ghost block" style="margin-top:10px" data-dlog="1">Document log (${(S.docs || []).length})</button>` : ''}
     <div>${shown.map(poCard).join('') || '<div class="empty">No orders here.</div>'}</div>`;
   openSheet('Orders', body, sh => {
     const byK = k => G.find(g => g.k === k);
@@ -1780,6 +1798,8 @@ function ordersSheet(filt) {
       const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
       if (d.pof) return ordersSheet(d.pof);
       if (d.porcpt) { closeSheet(); return receiptSheet(d.porcpt); }
+      if (d.dlog) return docsLogSheet();
+      if (d.podocs) { const g = byK(d.podocs); if (!g) return; return docsSheet(g); }
       if (d.popay) { const g = byK(d.popay); if (!g) return; closeSheet(); return paySalesSheet(g.list.filter(s => num(s.total) - num(s.paid) > 0.5), g.customer || 'The buyer'); }
       if (d.ponext || d.poyes) { const g = byK(d.ponext || d.poyes); if (!g) return; const to = PO_STEPS[poIdx(g.status) + 1][0];
         if (to === 'collected' && g.due > 0.5 && !d.poyes) { const cf = $(`[data-pocf="${CSS.escape(g.k)}"]`, sh); if (cf) cf.hidden = false; return; }
@@ -2442,6 +2462,155 @@ function expSheet(expId) {
   });
 }
 
+/* Documents (owner only, pre-order store): open the invoice and poster tools filled from the store */
+const DOC_TOOLS = 'https://alhydara3.github.io/shopbook/chinaorders/tools/';
+const DOC_TYPES = [['order', 'Order form', 'What the buyer asked for, for them to sign before you order'], ['proforma', 'Proforma invoice', 'The price and deposit, before payment'], ['receipt', 'Receipt', 'For the last payment you recorded'], ['final', 'Final invoice', 'When the goods arrive: what was paid and the balance'], ['delivery', 'Delivery note', 'For the buyer to check the goods and sign when they collect']];
+function b64u(o) { const u8 = new TextEncoder().encode(JSON.stringify(o)); let s = ''; u8.forEach(c => { s += String.fromCharCode(c); }); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+function docPayload(g, type) {
+  const rd = receiptData(g.list[0].id); if (!rd) return null;
+  const items = rd.lines.map(l => ({ d: l.name, s: l.size, q: l.qty, p: l.price }));
+  const pays = []; g.list.forEach(s => (s.payments || []).forEach(p => { if (num(p.amount) > 0) pays.push(p); }));
+  pays.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const okPays = pays.length && Math.abs(sum(pays, p => num(p.amount)) - rd.paid) < 1;
+  const last = okPays ? pays[pays.length - 1] : null;
+  const received = last ? num(last.amount) : rd.paid, method = last ? (last.method || 'Cash') : (rd.pays || '');
+  const it0 = S.items.find(i => i.id === (g.list[0] || {}).itemId) || {};
+  const dep = itDepOwn(it0) || PO_DEP();
+  const when = itWhen(it0) || PO_WHEN();
+  const di = ST().docInfo || {};
+  const p = { v: 1, type, seller: { name: di.name || '', email: di.email || '', address: di.address || '', payinfo: di.payinfo || '' }, number: nextDocNo(type), client: g.customer || rd.customer || '', phone: g.phone || rd.phone || '', ref: rd.no, related: type === 'delivery' ? rd.no : '', date: today(), items, discount: rd.discount, depositPct: Math.round(dep * 100), arrival: when };
+  if (type === 'receipt') { p.received = received; p.paidBefore = Math.max(0, rd.paid - received); p.method = method; }
+  if (type === 'final') p.paidBefore = rd.paid;
+  return p;
+}
+async function openDocTool(page, hashKey, payload, photoFn) {
+  toast('Opening…');
+  try { return await openDocTool2(page, hashKey, payload, photoFn); } catch (e) { toast('Could not open the tool: ' + String((e && e.message) || e).slice(0, 120)); }
+}
+async function openDocTool2(page, hashKey, payload, photoFn) {
+  // same address as the tools (installed app, GitHub Pages): hand the order over through this browser's own storage and
+  // open the tool in this window (a new window is often blocked or ignored in the installed app); the tool has a way back
+  if (location.origin === new URL(DOC_TOOLS).origin) {
+    let photo = null;
+    if (photoFn) { try { photo = await Promise.race([photoFn(), new Promise(r => setTimeout(() => r(null), 8000))]); } catch { photo = null; } }
+    const put = ph => localStorage.setItem('ahToolHandoff', JSON.stringify({ k: hashKey, t: Date.now(), payload, photo: ph }));
+    try { put(photo); } catch { try { put(null); } catch { return toast('Could not pass the order to the tool (the phone storage is full or blocked).'); } }
+    location.assign(DOC_TOOLS + page + '#h=1'); return;
+  }
+  return openDocToolLegacy(page, hashKey, payload, photoFn);
+}
+function openDocToolLegacy(page, hashKey, payload, photoFn) {
+  const win = window.open(DOC_TOOLS + page + '#' + hashKey + '=' + b64u(payload), '_blank');
+  if (!win) { toast('Your browser blocked the new page. Allow pop-ups for this app and try again.'); return; }
+  if (!photoFn) return;
+  const origin = new URL(DOC_TOOLS).origin;
+  let done = false;
+  const onMsg = async e => {
+    if (done || e.source !== win || e.origin !== origin || !e.data || e.data.type !== 'ahtool-ready') return;
+    done = true; window.removeEventListener('message', onMsg);
+    let photo = null; try { photo = await photoFn(); } catch { photo = null; }
+    try { win.postMessage({ type: 'ahtool-data', photo: photo || null }, origin); } catch {}
+  };
+  window.addEventListener('message', onMsg);
+  setTimeout(() => window.removeEventListener('message', onMsg), 60000);
+}
+/* Document numbers and log kept by the store (collection "docs", owner only). The document tool writes its own log in this browser;
+   the store copies it here, so the numbers carry on in order on every device and the log is kept with the store's records. */
+const DOC_PRE = { proforma: 'PI', receipt: 'RC', final: 'INV', order: 'OF', delivery: 'DN' };
+const DOC_LABEL = { 'order form': 'order', 'proforma invoice': 'proforma', 'receipt': 'receipt', 'final invoice': 'final', 'delivery note': 'delivery' };
+const DOC_LOGKEY = 'ahChinaOrdersDocLogV1', DOC_CNTKEY = 'ahChinaOrdersDocN';
+function toolLog() { try { const a = JSON.parse(localStorage.getItem(DOC_LOGKEY) || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } }
+function docMax(pre) {
+  const rx = new RegExp('^' + pre + '-(\\d+)$', 'i'); let n = 0;
+  (S.docs || []).concat(toolLog().map(e => ({ no: e.number }))).forEach(d => { const m = rx.exec(String(d.no || '')); if (m) n = Math.max(n, parseInt(m[1], 10)); });
+  return n;
+}
+function nextDocNo(type) { const pre = DOC_PRE[type] || 'PI'; return pre + '-' + ('000' + (docMax(pre) + 1)).slice(-4); }
+let docsBusy = false; const docsDone = new Set();   // ids written in this session: never written twice, whatever the snapshot says
+async function docsSync() {
+  if (docsBusy || !S.db || !S.got.docs || !PO() || !OWN()) return;
+  docsBusy = true;
+  try {
+    Object.keys(DOC_PRE).forEach(k => { const pre = DOC_PRE[k], n = docMax(pre); try { if (n > (parseInt(localStorage.getItem(DOC_CNTKEY + pre) || '0', 10) || 0)) localStorage.setItem(DOC_CNTKEY + pre, String(n)); } catch {} });
+    const have = new Map((S.docs || []).map(d => [d.id, d]));
+    for (const e of toolLog()) {
+      const no = String(e.number || '').trim(), type = DOC_LABEL[String(e.type || '').toLowerCase()]; if (!no || !type || !/^[A-Za-z]{1,4}-\d{1,6}$/.test(no)) continue;
+      const base = no.toLowerCase(); let id = base, k = 1, rec;
+      while ((rec = have.get(id)) && (String(rec.customer || '') !== String(e.client || '') || String(rec.ref || '') !== String(e.ref || '')) && k < 20) id = base + '-' + (++k);
+      const cur = have.get(id);
+      const c = x => typeof x === 'number' ? x / 100 : '';
+      if (!cur && !docsDone.has(id)) {
+        const d = clean({ type, no, label: String(e.type), date: String(e.date || ''), ref: String(e.ref || ''), customer: String(e.client || ''), total: c(e.totalC), received: c(e.rcC), balance: c(e.balC), state: String(e.status || ''), at: String(e.at || new Date().toISOString()), by: S.uid || '', voided: e.voided ? String(e.voided) : '', voidNote: e.voidreason ? String(e.voidreason).slice(0, 300) : '' });
+        docsDone.add(id); try { await S.db.doc('docs/' + id).set(d); have.set(id, { ...d, id }); } catch { docsDone.delete(id); break; }
+      } else if (cur && e.voided && !cur.voided && !docsDone.has(id + '!v')) {
+        docsDone.add(id + '!v'); try { await S.db.doc('docs/' + id).update({ voided: String(e.voided), voidNote: e.voidreason ? String(e.voidreason).slice(0, 300) : '' }); } catch { docsDone.delete(id + '!v'); break; }
+      }
+    }
+  } finally { docsBusy = false; }
+}
+function docRow(d, withBtn) {
+  const amt = d.type === 'receipt' ? d.received : d.total;
+  return `<div class="li" style="grid-template-columns:1fr auto;align-items:start"><div style="min-width:0"><b>${esc(d.no)}</b> · ${esc(d.label || d.type)}${d.voided ? ' <span class="pill bad">VOID</span>' : ''}<div class="small muted">${[d.customer, d.ref, d.date ? nice(d.date) : '', amt !== '' && amt != null && !(d.type === 'delivery' || d.type === 'order') ? D(num(amt)) : ''].filter(Boolean).map(esc).join(' · ')}${d.voided && d.voidNote ? '<br>' + esc(d.voidNote) : ''}</div></div>${withBtn ? `<button type="button" class="btn ghost" data-dvoid="${esc(d.id)}">${d.voided ? 'Undo void' : 'Mark void'}</button>` : ''}</div>`;
+}
+function docsLogSheet(q) {
+  if (!(PO() && OWN())) return;
+  docsSync();
+  const all = (S.docs || []).slice().sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+  const needle = String(q || '').trim().toLowerCase();
+  const list = needle ? all.filter(d => [d.no, d.label, d.customer, d.ref, d.date].join(' ').toLowerCase().includes(needle)) : all;
+  openSheet('Document log', `<p class="note" style="margin:0">${all.length} document${all.length === 1 ? '' : 's'} made with the document tool. Numbers continue from the highest one here. “Mark void” only changes this log: cancel the document itself in the document tool too.</p>
+    <input id="dlQ" type="search" placeholder="Search number, name or order" value="${esc(needle)}" style="margin-top:8px">
+    <div class="list" style="margin-top:8px">${list.slice(0, 60).map(d => docRow(d, true)).join('') || '<div class="empty">No documents yet.</div>'}${list.length > 60 ? `<p class="small muted">Showing the latest 60 of ${list.length}. Search to find older ones.</p>` : ''}</div>
+    <button type="button" class="btn ghost block" data-back="1" style="margin-top:10px">Back to the orders</button>`, sh => {
+    const qi = $('#dlQ', sh); qi.addEventListener('change', () => docsLogSheet(qi.value));
+    sh.addEventListener('click', async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.back) return ordersSheet();
+      if (b.dataset.dvoid) { const d = (S.docs || []).find(x => x.id === b.dataset.dvoid); if (!d) return; b.disabled = true;
+        try { await S.db.doc('docs/' + d.id).update(d.voided ? { voided: '', voidNote: '' } : { voided: today(), voidNote: 'Marked void in the store' }); } catch { toast('Could not save (no internet?)'); b.disabled = false; return; }
+        setTimeout(() => docsLogSheet(qi.value), 400); }
+    });
+  });
+}
+function docsSheet(g) {
+  if (!(PO() && OWN())) return;
+  docsSync();
+  openSheet('Documents', `<p class="note" style="margin:0">For <b>${esc(g.customer || 'No name')}</b> · ${esc(g.no || '')}. The document opens in a new page, filled from this order. Check it, then save or print it there. The number is the next one in the store's document log.</p>
+    ${(() => { const rn = (receiptData(g.list[0].id) || {}).no; const mine = (S.docs || []).filter(d => rn && d.ref === rn).sort((a, b) => String(a.at || '').localeCompare(String(b.at || ''))); return mine.length ? `<h3 style="margin:12px 0 4px">Already made for this order</h3><div class="list">${mine.map(d => docRow(d, false)).join('')}</div>` : ''; })()}
+    <div class="list" style="margin-top:10px">${DOC_TYPES.map(([k, l, h]) => `<button type="button" class="btn block" data-doc="${k}" style="text-align:left"><b>${esc(l)}</b><br><span class="small muted">${esc(h)}</span></button>`).join('')}</div>
+    <details style="margin-top:12px"><summary><b>Your details on documents</b></summary><p class="note" style="margin:6px 0">Kept privately in the store (not in the public page) and put on every document. Leave a line empty to use the document tool's own.</p>
+      <label class="f">Name<input id="diName" value="${esc((ST().docInfo || {}).name || '')}" placeholder="Alhagie Hydara"></label>
+      <label class="f">Email<input id="diEmail" type="email" value="${esc((ST().docInfo || {}).email || '')}" placeholder="your email"></label>
+      <label class="f">Address<input id="diAddr" value="${esc((ST().docInfo || {}).address || '')}" placeholder="Banjul, The Gambia"></label>
+      <label class="f">How to pay (bank, mobile money; one line each)<textarea id="diPay" rows="4" placeholder="Bank transfer: …&#10;Mobile money: …">${esc((ST().docInfo || {}).payinfo || '')}</textarea></label>
+      <button type="button" class="btn primary block" data-disave="1">Save my details</button></details>
+    <button type="button" class="btn ghost block" data-back="1" style="margin-top:10px">Back to the orders</button><p class="small muted" style="margin:8px 0 0">App version: documents-5</p>`, sh => {
+    sh.addEventListener('click', async e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.back) return ordersSheet();
+      if (b.dataset.disave) { const v = id => String(($(id, sh) || {}).value || '').trim().slice(0, 120); if (await saveSettings({ docInfo: { name: v('#diName'), email: v('#diEmail'), address: v('#diAddr'), payinfo: String(($('#diPay', sh) || {}).value || '').replace(/\r/g, '').trim().slice(0, 500) } })) toast('Saved. New documents will use these.'); return; }
+      if (b.dataset.doc) { let p = null; try { p = docPayload(g, b.dataset.doc); } catch (err) { return toast('Could not prepare the document: ' + String((err && err.message) || err).slice(0, 120)); } if (!p) return toast('Could not read this order.'); openDocTool('invoice.html', 'd', p); }
+    });
+  });
+}
+function posterPayload(it) {
+  const nm = String(it.name || '').trim(); let n1 = nm, n2 = '';
+  if (nm.length > 14) { const w = nm.split(/\s+/); let best = 1, bd = 1e9; for (let i = 1; i < w.length; i++) { const d = Math.abs(w.slice(0, i).join(' ').length - w.slice(i).join(' ').length); if (d < bd) { bd = d; best = i; } } n1 = w.slice(0, best).join(' '); n2 = w.slice(best).join(' '); }
+  const dep = itDepOwn(it) || PO_DEP(), when = itWhen(it);
+  const lines = String(it.desc || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean).slice(0, 5);
+  return { v: 1, photo: true, specs: lines, text: { tag: String(it.group || '').toUpperCase(), name1: n1, name2: n2, tagline: itSea(it) ? SEA_LABEL : '', price: num(it.target) > 0 ? 'D ' + Math.round(num(it.target)).toLocaleString('en-US') : '', deposit: isFull(dep) ? 'Full payment when you order' : Math.round(dep * 100) + '% deposit to confirm your order', arrival: when ? 'About ' + when : '', extra: it.sizes || '', ref: it.code || '' } };
+}
+function posterSheetFor(it) {
+  if (!(PO() && OWN())) return;
+  const photoFn = async () => {
+    let big = null;
+    try { if (HOST() && HOST().photos) { const l = await HOST().photos('get', it.id); if (Array.isArray(l) && l.length) big = l[0]; } } catch {}
+    const c = big || it.photo || ''; const u = typeof c === 'string' ? c : (c && (c.data || c.src || c.url)) || '';
+    return /^data:image\/(png|jpeg|webp|gif);base64,/.test(u) ? u : null;
+  };
+  openDocTool('poster.html', 'p', posterPayload(it), photoFn);
+}
+
 /* Item form */
 function itemSheet(itemId) {
   const ship = curShip(); const c = calcShip(ship);
@@ -2449,11 +2618,12 @@ function itemSheet(itemId) {
   const st = ST(); const groups = Object.keys(st.markups || {});
   const v = it || { code: '', name: '', group: groups[0] || 'General', sizes: '', qty: 1, rmb: '', forSale: true, photo: '', finalPrice: '', market: '' };
   const hist = it ? S.sales.filter(s => s.itemId === it.id).sort((a, b) => String(b.date).localeCompare(String(a.date))) : [];
-  const info = it && it.forSale ? OWN() ? `${priceTrio(it)}<div class="kv small"><span>China price</span><b>${num(it.rmb)} RMB</b><span>Landed cost (used for target)</span><b>${D(it.landed)}</b><span>Own cost (used for lowest)</span><b>${D(it.own)}</b><span>Lowest = own cost + (${it.flSrc === 'item' ? 'this item' : it.flSrc === 'group' ? esc(it.group) : 'general'})</span><b>${P(it.fl)}</b><span>Markup (${it.mkSrc === 'item' ? 'this item' : esc(it.group)})</span><b>${P(it.mk)}</b>${num(it.finalPrice) > 0 ? `<span>Target from markup (not used: own selling price ${D(it.finalPrice)} is set)</span><b>${D(it.mkTarget)}</b>` : ''}<span>Sold / bought</span><b>${it.sold} / ${it.qty}</b></div>` : `${priceTrio(it)}<div class="kv small"><span>Sold / bought</span><b>${it.sold} / ${it.qty}</b></div>` : '';
+  const info = it && it.forSale ? OWN() ? `${priceTrio(it)}<div class="kv small"><span>China price</span><b>${num(it.rmb)} RMB</b><span>Landed cost (used for target)</span><b>${D(it.landed)}${it.manLanded ? ' (by hand)' : ''}</b><span>Own cost (used for lowest)</span><b>${D(it.own)}${it.manOwn ? ' (by hand)' : ''}</b>${it.manLanded || it.manOwn ? `<span>Worked out from the shipment</span><b>${D(it.calcLanded)} / ${D(it.calcOwn)}</b>` : ''}${it.frt > 0 ? `<span>Shipping cost per piece (by ${it.shipMode === 'air' ? 'kg' : 'CBM'})</span><b>${D(it.frt)}</b>` : ''}${num(it.rateRMB) > 0 ? `<span>Rate for this item</span><b>${it.rateRMB} per RMB</b>` : ''}<span>Lowest = own cost + (${it.flSrc === 'item' ? 'this item' : it.flSrc === 'group' ? esc(it.group) : 'general'})</span><b>${P(it.fl)}</b><span>Markup (${it.mkSrc === 'item' ? 'this item' : esc(it.group)})</span><b>${P(it.mk)}</b>${num(it.finalPrice) > 0 ? `<span>Target from markup (not used: own selling price ${D(it.finalPrice)} is set)</span><b>${D(it.mkTarget)}</b>` : ''}<span>Sold / bought</span><b>${it.sold} / ${it.qty}</b></div>` : `${priceTrio(it)}<div class="kv small"><span>Sold / bought</span><b>${it.sold} / ${it.qty}</b></div>` : '';
   const ro = !OWN();
   const adjs = it ? S.adjustments.filter(a => a.itemId === it.id).sort((a, b) => String(b.date).localeCompare(String(a.date))) : [];
   openSheet(it ? it.name : 'Add item', `${it ? `<div class="row" style="flex-wrap:nowrap">${img(it, 'thumb lg')}<div class="small muted">${esc(it.code)} · ${esc(it.group)}${it.sizes ? '<br>' + esc(it.sizes) : ''}</div></div>${it.catHide === true && it.forSale ? '<p class="small" style="margin:0"><span class="pill">Not in the public catalogue</span></p>' : ''}${PO() && (itSea(it) || itOwnPo(it)) ? `<p class="small" style="margin:0">${itSea(it) ? `<span class="pill">${esc(SEA_LABEL)}</span> ` : ''}${itOwnPo(it) ? esc(`This product: ${depWord(itDep(it))} · ${poArrive(itWhen(it))}`) : ''}</p>` : ''}${it.desc ? `<div><h3 style="margin:0 0 4px">Details for buyers</h3><p class="idesc">${esc(it.desc)}</p></div>` : ''}` : ''}${info}
     ${it && it.forSale && S.canWrite ? `<button type="button" class="btn block" id="iAdj">Damaged, lost, given away or found? Record a stock change</button>` : ''}
+    ${it && it.forSale && PO() && OWN() ? `<button type="button" class="btn block" id="iPoster">Make a poster for this item</button>` : ''}
     ${ro && S.canWrite ? '<p class="note" style="margin:0">Only the owner can change prices and item details.</p>' : ''}
     ${ro ? '' : `<form id="itF" class="list" style="gap:12px">
       <div class="fgrid"><label class="f">Code<input id="iCode" value="${esc(v.code)}" placeholder="e.g. SHO-008"></label><label class="f">Name<input id="iName" value="${esc(v.name)}"></label></div>
@@ -2471,10 +2641,21 @@ function itemSheet(itemId) {
         <label class="f">Own selling price (D) <span class="h">optional, replaces target (ask = this + bargaining room)</span><input id="iFinal" inputmode="decimal" value="${esc(v.finalPrice || '')}"></label></div>
       <label class="f">Markup (%) <span class="h">optional, only for this item; empty = use the group's ${P(grpMk(v.group))}</span><input id="iMk" inputmode="decimal" value="${hasPct(v.markupPct) ? +(num(v.markupPct) * 100).toFixed(2) : ''}" placeholder="${Math.round(grpMk(v.group) * 100)}"></label>
       <label class="f">Lowest = own cost + (%) <span class="h">optional, only for this item; empty = use the group's ${P(floorFor({ group: v.group }, st)[0])}</span><input id="iFloor" inputmode="decimal" value="${hasPct(v.floorPct) ? Math.round(num(v.floorPct) * 100) : ''}" placeholder="${Math.round(floorFor({ group: v.group }, st)[0] * 100)}"></label>
+      <div class="f cpbox"><b>Weight, size and rate</b><span class="h">optional. Gives this item its own shipping cost and exchange rate. Leave empty to share the costs by China price as before.</span>
+        <div class="fgrid"><label class="f">Shipped by<select id="iMode"><option value="">Not set</option><option value="air"${v.shipMode === 'air' ? ' selected' : ''}>Air (price per kg)</option><option value="sea"${v.shipMode === 'sea' ? ' selected' : ''}>Sea (price per CBM)</option></select></label>
+          <label class="f">Rate for this item (D per RMB)<input id="iRate" inputmode="decimal" value="${num(v.rateRMB) > 0 ? esc(v.rateRMB) : ''}" placeholder="${esc(+(it ? c.rate : num(ship.planRate)).toFixed(3))}"></label></div>
+        <div class="fgrid"><label class="f">Weight of 1 piece (kg)<input id="iKg" inputmode="decimal" value="${num(v.kg) > 0 ? esc(v.kg) : ''}"></label>
+          <label class="f">Volume of 1 piece (CBM)<input id="iCbm" inputmode="decimal" value="${num(v.cbm) > 0 ? esc(v.cbm) : ''}"></label></div>
+        <div class="fgrid" style="grid-template-columns:repeat(3,1fr)"><label class="f">Length (cm)<input id="iDL" inputmode="decimal" value="${num(v.dimL) > 0 ? esc(v.dimL) : ''}"></label><label class="f">Width (cm)<input id="iDW" inputmode="decimal" value="${num(v.dimW) > 0 ? esc(v.dimW) : ''}"></label><label class="f">Height (cm)<input id="iDH" inputmode="decimal" value="${num(v.dimH) > 0 ? esc(v.dimH) : ''}"></label></div>
+        <span class="h">Type length × width × height of one piece and the CBM is worked out for you.</span>
+        <div id="iFrt" class="small muted"></div></div>
+      <div class="f cpbox"><b>Cost of this item, by hand</b><span class="h">optional, last resort. Empty = worked out from the shipment (shown in grey). Clear the box to go back to the worked-out cost.</span>
+        <div class="fgrid"><label class="f">Landed cost (D) <span class="h">used for target</span><input id="iLandM" inputmode="decimal" value="${num(v.landedManual) > 0 ? esc(v.landedManual) : ''}" placeholder="${it ? Math.round(it.calcLanded) : ''}"></label>
+          <label class="f">Own cost (D) <span class="h">used for lowest</span><input id="iOwnM" inputmode="decimal" value="${num(v.ownManual) > 0 ? esc(v.ownManual) : ''}" placeholder="${it ? Math.round(it.calcOwn) : ''}"></label></div></div>
       <label class="row" style="flex-wrap:nowrap"><input type="checkbox" id="iSale" style="width:22px;min-height:22px" ${v.forSale !== false ? 'checked' : ''}> For sale (untick for shop equipment like mannequins)</label>
       ${HOST() ? `<label class="row" style="flex-wrap:nowrap"><input type="checkbox" id="iCat" style="width:22px;min-height:22px" ${v.catHide !== true ? 'checked' : ''}> Show in the public catalogue (untick to keep this item off the catalogue)</label>` : ''}
       <label class="f">Photo <span class="h">optional, the small photo used everywhere in the Shop Book</span><input id="iPhoto" type="file" accept="image/*"></label>
-      ${HOST() ? `<div class="f cpbox"><b>Catalogue photos</b><span class="h">optional, up to ${CP_MAX} bigger photos shown only in the public catalogue (Details). Needs internet.</span>
+      ${HOST() ? `<div class="f cpbox"><b>Catalogue photos</b><span class="h">optional, up to ${cpMax()} bigger photos shown only in the public catalogue (Details). Needs internet.</span>
         ${HOST().photos ? `<div id="cpList" class="cpl"><span class="small muted">${it ? 'Loading…' : 'None yet.'}</span></div><input id="cpAdd" type="file" accept="image/*" multiple>` : '<p class="note" style="margin:4px 0 0">Add them from the installed Shop Book app (this web app needs its Index.html updated first).</p>'}</div>` : ''}
       ${HOST() ? `<div class="f cpbox"><b>Catalogue video</b><span class="h">optional, one per item, at most 30 seconds, shown only in the public catalogue (Details). It is made smaller on this phone, then sent: needs internet, keep the screen on.</span>
         ${!it ? '<p class="note" style="margin:4px 0 0">Save the item first, then open it again to add a video.</p>' : !HOST().video ? '<p class="note" style="margin:4px 0 0">Add it from the installed Shop Book app (this web app needs its Index.html updated first).</p>' : `<div id="cvNow" class="small muted">Loading…</div><input id="cvFile" type="file" accept="video/*"><div id="cvSt" class="small" hidden></div><div class="cvbar" id="cvBar" hidden><i></i></div><button type="button" class="btn block" id="cvSend" hidden>Make it smaller and send</button>`}</div>` : ''}
@@ -2485,23 +2666,37 @@ function itemSheet(itemId) {
     ${adjs.length ? `<div><h3>Stock changes</h3><div class="list">${adjs.map(a => `<div class="li" style="grid-template-columns:1fr auto"><span class="small">${short(a.date)} · ${esc(a.reason)}${a.note ? ' · ' + esc(a.note) : ''} · by ${esc(whoName(a.by))}</span><b>${num(a.qty) > 0 ? '+' : ''}${esc(a.qty)}</b></div>`).join('')}</div></div>` : ''}
     ${hist.length ? `<div><h3>Sales of this item</h3><div class="list">${hist.slice(0, 20).map(s => `<div class="li" style="grid-template-columns:1fr auto"><span class="small">${short(s.date)} · ${esc(s.qty)} pc${s.size ? ' · ' + esc(s.size) : ''} · ${esc(s.payment)}</span><b>${D(s.total)}</b></div>`).join('')}</div></div>` : ''}`, sh => {
     const aj = $('#iAdj', sh); if (aj) aj.onclick = () => { closeSheet(); adjSheet(it.id); };
+    const pst = $('#iPoster', sh); if (pst) pst.onclick = () => { try { posterSheetFor(it); } catch (err) { toast('Could not open the poster: ' + String((err && err.message) || err).slice(0, 120)); } };
     const f = $('#itF', sh); if (!f) return;
+    { const g = id => num($(id, sh).value), cbmEl = $('#iCbm', sh);
+      const frt = () => { const m = $('#iMode', sh).value, kg = g('#iKg'), cb = g('#iCbm'), A = num(ship.airKg), U = num(ship.seaUsd), X = num(ship.usdRate); let t = '';
+        if (m === 'air') t = !(A > 0) ? 'Set the air price per kg in Edit shipment first.' : !(kg > 0) ? 'Type the weight in kg.' : `Shipping cost: ${D(kg * A)} per piece (${kg} kg × ${D(A)} per kg).`;
+        else if (m === 'sea') t = !(U > 0 && X > 0) ? 'Set the sea price per CBM and the D per USD rate in Edit shipment first.' : !(cb > 0) ? 'Type the volume in CBM, or the length, width and height.' : `Shipping cost: ${D(cb * U * X)} per piece (${cb} CBM × ${U} USD × ${X}).`;
+        $('#iFrt', sh).textContent = t; };
+      const dims = () => { const L = g('#iDL'), W = g('#iDW'), H = g('#iDH'); if (L > 0 && W > 0 && H > 0) cbmEl.value = +(L * W * H / 1e6).toFixed(5); frt(); };
+      ['#iDL', '#iDW', '#iDH'].forEach(id => $(id, sh).addEventListener('input', dims));
+      ['#iMode', '#iKg', '#iCbm'].forEach(id => $(id, sh).addEventListener('input', frt)); $('#iMode', sh).addEventListener('change', frt); frt(); }
     let photo = v.photo || '';
-    $('#iPhoto', sh).addEventListener('change', async e => { const file = e.target.files[0]; if (!file) return; try { photo = await shrink(file); toast('Photo ready'); } catch { toast('Could not read that photo.'); } });
+    $('#iPhoto', sh).addEventListener('change', async e => { const file = e.target.files[0]; if (!file) return; try { photo = await shrink(file); toast('Photo ready');
+      // pre-order store: the same picture, large, is kept as the first catalogue photo (the catalogue then shows the large one, not the small one)
+      if (PO() && HOST() && HOST().photos && cpOk) { try { const big = await bigPhoto(file);
+        if (hd && cp.length) { cp[0] = big; cpChanged = true; cpDraw(); } else if (cp.length < cpMax()) { cp.unshift(big); hd = true; cpChanged = true; cpDraw(); }
+        else toast('The small photo is saved. The large copy needs a free catalogue photo slot: remove one first.', 6000); } catch {} }
+    } catch { toast('Could not read that photo.'); } });
     // catalogue photos: loaded from the server when the item opens; saved (before the item) only if changed
-    let cp = [], cpOk = !it, cpChanged = false, cpSaved = false;
+    let cp = [], cpOk = !it, cpChanged = false, cpSaved = false, hd = !!(it && it.photoHD);   // hd: the first catalogue photo is the large copy of the main photo
     const cpList = $('#cpList', sh), cpAdd = $('#cpAdd', sh);
     const cpDraw = () => { if (!cpList) return;
       cpList.innerHTML = !cpOk ? '<span class="small muted">Could not load the catalogue photos (no internet?). They stay as they are; open the item again with internet to change them.</span>'
         : cp.length ? cp.map((src, k) => `<div class="cp"><img src="${esc(src)}" alt="Catalogue photo ${k + 1}"><button type="button" data-cprm="${k}" aria-label="Remove photo ${k + 1}">×</button></div>`).join('') : '<span class="small muted">None yet.</span>';
-      if (cpAdd) cpAdd.disabled = !cpOk || cp.length >= CP_MAX; };
+      if (cpAdd) cpAdd.disabled = !cpOk || cp.length >= cpMax(); };
     if (cpList && it) HOST().photos('get', it.id).then(l => { cp = Array.isArray(l) ? l : []; cpOk = true; cpDraw(); }, () => { cpOk = false; cpDraw(); }); else cpDraw();
     if (cpAdd) cpAdd.addEventListener('change', async e => {
-      const files = Array.from(e.target.files || []).slice(0, CP_MAX - cp.length); e.target.value = '';
+      const files = Array.from(e.target.files || []).slice(0, cpMax() - cp.length); e.target.value = '';
       for (const file of files) { try { cp.push(await bigPhoto(file)); cpChanged = true; } catch { toast('Could not read that photo.'); } }
-      if (files.length) toast(cp.length >= CP_MAX ? `${CP_MAX} catalogue photos: that is the most` : 'Photo ready'); cpDraw();
+      if (files.length) toast(cp.length >= cpMax() ? `${cpMax()} catalogue photos: that is the most` : 'Photo ready'); cpDraw();
     });
-    if (cpList) cpList.addEventListener('click', e => { const b = e.target.closest('[data-cprm]'); if (!b) return; cp.splice(+b.dataset.cprm, 1); cpChanged = true; cpDraw(); });
+    if (cpList) cpList.addEventListener('click', e => { const b = e.target.closest('[data-cprm]'); if (!b) return; if (+b.dataset.cprm === 0) hd = false; cp.splice(+b.dataset.cprm, 1); cpChanged = true; cpDraw(); });
     // catalogue video: sent on its own (not with Save item), right after it is made smaller
     const cvNow = $('#cvNow', sh);
     if (cvNow) {
@@ -2553,6 +2748,10 @@ function itemSheet(itemId) {
         market: num($('#iMkt', sh).value) || null, finalPrice: num($('#iFinal', sh).value) || null, floorPct: String($('#iFloor', sh).value).trim() === '' ? null : num($('#iFloor', sh).value) / 100,
         markupPct: String($('#iMk', sh).value).trim() === '' ? null : num($('#iMk', sh).value) / 100,
         desc: String($('#iDesc', sh).value).replace(/\r\n?/g, '\n').trim().slice(0, 1000) };
+      { const m = $('#iMode', sh).value, f = id => num($(id, sh).value);
+        if (m) d.shipMode = m; if (f('#iKg') > 0) d.kg = f('#iKg'); if (f('#iCbm') > 0) d.cbm = f('#iCbm');
+        if (f('#iDL') > 0) d.dimL = f('#iDL'); if (f('#iDW') > 0) d.dimW = f('#iDW'); if (f('#iDH') > 0) d.dimH = f('#iDH');
+        if (f('#iRate') > 0) d.rateRMB = f('#iRate'); if (f('#iLandM') > 0) d.landedManual = f('#iLandM'); if (f('#iOwnM') > 0) d.ownManual = f('#iOwnM'); }
       if ($('#iCat', sh)) d.catHide = !$('#iCat', sh).checked; else if (it && it.catHide) d.catHide = it.catHide;
       if ($('#iDep', sh)) {   // order store: the owner's own deposit % / arrival time / label for this product (empty = the store's)
         const ds = $('#iFull', sh).checked ? '' : String($('#iDep', sh).value).replace('%', '').trim(), dv = Math.round(num(ds));
@@ -2562,6 +2761,7 @@ function itemSheet(itemId) {
         if ($('#iSea', sh).checked) d.bySea = true;
       } else if (it) { if (it.poDep != null) d.poDep = it.poDep; if (it.poWhen) d.poWhen = it.poWhen; if (it.bySea) d.bySea = it.bySea; }   // a shop with stock keeps them as they are
       if (it && it.note) d.note = it.note;
+      if (hd && cp.length) d.photoHD = true;
       if (d.markupPct != null && !(d.markupPct >= 0)) return toast('Write the markup as a number, e.g. 60.');
       if (!d.name) return toast('Give the item a name.');
       if (!d.code) return toast('Give the item a short code, e.g. SHO-008.');
@@ -2580,7 +2780,7 @@ function itemSheet(itemId) {
     sh.addEventListener('click', e => { if (e.target.id === 'iDelYes') { if (HOST() && HOST().photos) HOST().photos('save', it.id, []).catch(() => {}); if (HOST() && HOST().video) HOST().video('videoRemove', [it.id]).catch(() => {}); } if (e.target.id === 'iDelYes') write(() => S.db.doc('items/' + it.id).delete(), 'Item deleted').then(ok => { if (ok) { logEvent('Deleted an item', it.id, it.code + ' ' + it.name, it); closeSheet(); } }); });
   });
 }
-const CP_MAX = 4, VID_SECS = 30, VID_PART = 700000, VID_MAX = 12 * 1024 * 1024;
+const cpMax = () => (PO() ? 5 : 4), VID_SECS = 30, VID_PART = 700000, VID_MAX = 12 * 1024 * 1024;
 const mmss = s => { s = Math.round(num(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 const mb = b => (num(b) / 1048576).toFixed(1) + ' MB';
 function vidErr(e) {
@@ -2655,18 +2855,24 @@ async function sendVideo(itemId, made, onS, job) {
 function bigPhoto(file) {   // long side at most 1000 px, not cropped; smaller again if the file is still big
   return new Promise((res, rej) => { const fr = new FileReader(); fr.onerror = rej; fr.onload = () => { const im = new Image(); im.onerror = rej; im.onload = () => {
     let out = '';
-    for (const [side, q] of [[1000, 0.68], [800, 0.62], [640, 0.55], [480, 0.5]]) {
+    for (const [side, q] of [[1400, 0.82], [1280, 0.78], [1120, 0.74], [1000, 0.7], [800, 0.64], [640, 0.56], [480, 0.5]]) {   // sharpest that still fits the 400,000-character limit of the store
       const k = Math.min(1, side / Math.max(im.width, im.height)), cv = document.createElement('canvas');
       cv.width = Math.max(1, Math.round(im.width * k)); cv.height = Math.max(1, Math.round(im.height * k));
-      cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height); out = cv.toDataURL('image/jpeg', q);
-      if (out.length <= 380000) break;
+      const cx = cv.getContext('2d'); cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high'; cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+      cx.drawImage(im, 0, 0, cv.width, cv.height); out = cv.toDataURL('image/jpeg', q);
+      if (out.length <= 385000) break;
     }
     res(out); }; im.src = fr.result; }; fr.readAsDataURL(file); });
 }
+const THUMB = 480;   // the main photo: a centred square, sharp enough for the catalogue cards and the lists (was 240)
+function squareThumb(im) {
+  const s = Math.min(im.width, im.height), cv = document.createElement('canvas'); cv.width = cv.height = THUMB; const cx = cv.getContext('2d');
+  cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high'; cx.fillStyle = '#fff'; cx.fillRect(0, 0, THUMB, THUMB);
+  cx.drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, THUMB, THUMB); return cv.toDataURL('image/jpeg', 0.8);
+}
 function shrink(file) {
   return new Promise((res, rej) => { const fr = new FileReader(); fr.onerror = rej; fr.onload = () => { const im = new Image(); im.onerror = rej; im.onload = () => {
-    const s = Math.min(im.width, im.height), cv = document.createElement('canvas'); cv.width = cv.height = 240; const cx = cv.getContext('2d');
-    cx.drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, 240, 240); res(cv.toDataURL('image/jpeg', 0.72)); }; im.src = fr.result; }; fr.readAsDataURL(file); });
+    res(squareThumb(im)); }; im.src = fr.result; }; fr.readAsDataURL(file); });
 }
 
 
@@ -2706,6 +2912,14 @@ function shipSheet(shipId) {
     selling: { online: 0, rent: 0, months: 3, setup: 0 }, recoverPct: 1, goals: [] }));
   delete d.id;
   const STATUS = ['Planning', 'Ordered', 'In transit', 'Selling', 'Closed'];
+  const chkHtml = () => { if (!ex) return ''; const c = calcShip(ex), k = c.chk; if (!k.anyNew && !(k.frtTotal > 0)) return '';
+    const L = [];
+    if (k.frtTotal > 0) L.push(`Shipping by weight or volume: <b>${D(k.frtTotal)}</b>. Shipping and other costs you entered above: <b>${D(c.importCosts)}</b> (these are in addition, so make sure they are different costs).`);
+    if (k.frtMissing.length) L.push(`${k.frtMissing.length} item${k.frtMissing.length > 1 ? 's have' : ' has'} no weight or volume, so ${k.frtMissing.length > 1 ? 'they share' : 'it shares'} the costs above by China price: ${k.frtMissing.slice(0, 6).map(r => esc(r.code)).join(', ')}${k.frtMissing.length > 6 ? '…' : ''}.`);
+    if (k.anyRate) { const df = k.goodsByRate - c.goodsGMD; L.push(`Goods at each item's own rate: <b>${D(k.goodsByRate)}</b>. Goods at the rate of the money you exchanged: <b>${D(c.goodsGMD)}</b>. Difference <b>${df >= 0 ? '+' : '−'}${D(Math.abs(df))}</b>${Math.abs(df) > 0.02 * Math.max(1, c.goodsGMD) ? ' (more than 2%: check the item rates)' : ''}.`); }
+    if (k.manual) L.push(`${k.manual} item${k.manual > 1 ? 's have' : ' has'} a cost typed by hand.`);
+    L.push(`Item costs added up (without selling costs): <b>${D(k.costSum)}</b>. Shipment goods + import costs: <b>${D(c.goodsGMD + c.importCosts)}</b>.`);
+    return `<div class="note" style="margin-top:8px"><b>Check</b><br>${L.join('<br>')}</div>`; };
   const draw = () => `<form id="shF" class="list" style="gap:14px">
     <div class="fgrid"><label class="f">Name<input data-k="name" value="${esc(d.name)}"></label><label class="f">Status<select data-k="status">${STATUS.map(s => `<option${s === d.status ? ' selected' : ''}>${s}</option>`).join('')}</select></label></div>
     <div class="fgrid"><label class="f">Started buying<input type="date" data-k="ordered" value="${esc(d.ordered)}"></label><label class="f">Arrived in ${esc(PLACE())}<input type="date" data-k="arrived" value="${esc(d.arrived || '')}"></label>
@@ -2718,6 +2932,9 @@ function shipSheet(shipId) {
       <div class="row"><button type="button" class="btn" data-add="costs">Add cost</button></div>
       ${shipHelperHtml('h')}
       <div class="row" style="margin-top:6px"><button type="button" class="btn" id="hShip">Add shipping cost</button><button type="button" class="btn" id="hCom">Add 10% commission</button></div></div>
+    <div class="panel"><h3>Shipping price by weight or volume</h3><p class="note">Optional. All-in prices, duties included. Items with a weight (air) or volume (sea) get their own shipping cost; the rest share the costs above as before. <b>Do not also enter the same shipping in Import costs</b>, or it is counted twice.</p>
+      <div class="fgrid"><label class="f">Air (D per kg)<input data-k="airKg" inputmode="decimal" value="${num(d.airKg) > 0 ? esc(d.airKg) : ''}"></label><label class="f">Sea (USD per CBM)<input data-k="seaUsd" inputmode="decimal" value="${num(d.seaUsd) > 0 ? esc(d.seaUsd) : ''}"></label><label class="f">D per 1 USD <span class="h">for sea</span><input data-k="usdRate" inputmode="decimal" value="${num(d.usdRate) > 0 ? esc(d.usdRate) : ''}"></label></div>
+      ${chkHtml()}</div>
     <div class="panel"><h3>Expected selling costs</h3><p class="note">Only used to set prices. Record the real costs in Money → Expenses.</p>
       <div class="fgrid"><label class="f">Online selling (D)<input data-k="selling.online" inputmode="decimal" value="${esc(d.selling.online)}"></label><label class="f">Rent per month (D)<input data-k="selling.rent" inputmode="decimal" value="${esc(d.selling.rent)}"></label><label class="f">Months of rent<input data-k="selling.months" inputmode="decimal" value="${esc(d.selling.months)}"></label><label class="f">Shop setup (D)<input data-k="selling.setup" inputmode="decimal" value="${esc(d.selling.setup)}"></label></div>
       <label class="f" style="margin-top:10px">Share of shop equipment cost this stock pays back (%)<input data-k="recoverPct" data-pct="1" inputmode="decimal" value="${Math.round(num(d.recoverPct) * 100)}"></label></div>
@@ -3104,7 +3321,7 @@ function guessGroup(raw, name, groups) {
 function toYMD(v) { if (v instanceof Date && !isNaN(v)) return ymd(v); const s = String(v || '').trim(); return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : ''; }
 function thumbFromBlob(blob) {
   return new Promise((res) => { const url = URL.createObjectURL(blob); const im = new Image(); im.onload = () => {
-    try { const s = Math.min(im.width, im.height), cv = document.createElement('canvas'); cv.width = cv.height = 240; cv.getContext('2d').drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, 240, 240); res(cv.toDataURL('image/jpeg', 0.72)); } catch { res(''); }
+    try { res(squareThumb(im)); } catch { res(''); }
     URL.revokeObjectURL(url); }; im.onerror = () => { URL.revokeObjectURL(url); res(''); }; im.src = url; });
 }
 async function extractPhotos(buf) {
@@ -3406,7 +3623,8 @@ render();
   const onErr = e => { if (e && e.code === 'revoked') { S.canWrite = false; } schedule(); };
   db.doc('settings/main').onSnapshot(s => { S.settings = s.exists ? s.data() : null; S.got.settings = true; schedule(); }, onErr);
   const coll = (name, key) => db.collection(name).onSnapshot(q => { S[key] = q.docs.map(d => ({ ...d.data(), id: d.id })); S.got[key] = true; schedule(); }, onErr);
-  coll('shipments', 'ships'); coll('items', 'items'); coll('sales', 'sales'); coll('expenses', 'expenses'); coll('customers', 'customers'); coll('adjustments', 'adjustments'); coll('cashups', 'cashups'); coll('counts', 'counts'); coll('log', 'log');
+  coll('shipments', 'ships'); coll('items', 'items'); coll('sales', 'sales'); coll('expenses', 'expenses'); coll('customers', 'customers'); coll('adjustments', 'adjustments'); coll('cashups', 'cashups'); coll('counts', 'counts'); coll('log', 'log'); db.collection('docs').onSnapshot(q => { S.docs = q.docs.map(d => ({ ...d.data(), id: d.id })); S.got.docs = true; schedule(); docsSync(); }, onErr);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) docsSync(); });
   db.doc('meta/backup').onSnapshot(s => { S.meta.backup = s.exists ? s.data() : null; schedule(); }, onErr);
   if (HOST()) db.doc('catalog/main').onSnapshot(s => { S.catalog = s.exists ? s.data() : null; S.got.catalog = true; schedule(); }, onErr);
   render();
