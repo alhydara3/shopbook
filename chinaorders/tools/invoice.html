@@ -311,7 +311,7 @@ function defaults() {
       paidbefore: '', received: '', paydate: today(), method: '[Payment method]',
       arrival: 'About 2 weeks',
       payinfo: 'Mobile money: [provider and number], account name [name]\nBank transfer: [bank, account name and number]\nCash: [where to pay]\n(Delete the lines you do not use.)',
-      terms_p: '1. This is a proforma invoice, not a receipt. Your order is confirmed when the deposit is received.\n2. The balance is due when the goods arrive, before collection.\n3. Arrival dates are estimates. Shipping and customs can change them.\n4. Cancel before we place your order: full refund of your deposit.\n5. Cancel after we place your order: refund of your deposit minus costs we cannot recover. We will explain the costs.\n6. If the goods arrive more than 30 days after the estimated date, you may cancel for a full refund of what you paid.\n7. Wrong or damaged goods: report within 48 hours of collection, with photos, and we will repair, replace or refund.',
+      terms_p: '1. This is a proforma invoice, not a receipt. Your order is confirmed when the deposit is received.\n2. The balance is due when the goods arrive, before collection.\n3. Arrival dates are estimates. Shipping and customs can change them.\n4. Cancel before we place your order: full refund of your deposit.\n5. Cancel after we place your order: refund of your deposit minus costs we cannot recover. We will explain the costs.\n6. Wrong or damaged goods: report within 48 hours of collection, with photos, and we will repair, replace or refund.',
       terms_r: 'Thank you for your order. Please keep this receipt as proof of payment.\nFull refund if you cancel before we place your order. After we order: refund minus costs we cannot recover.',
       terms_f: '1. Please pay the balance before you collect your goods. A receipt is issued when you pay.\n2. Wrong or damaged goods: report within 48 hours of collection, with photos, and we will repair, replace or refund.',
       terms_o: '1. We order exactly what is written above. Please check the product, specifications and supplier listing before you sign.\n2. Changes after we place the order may cost extra or may not be possible.\n3. Payment, cancellation, delay and damage rules are in the terms of your proforma invoice.',
@@ -384,12 +384,19 @@ var FIELDS = [
 /* ---------- storage ---------- */
 function saveState() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
 function isImgData(v) { return typeof v === 'string' && v.length < 3000000 && /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+\/=]+$/.test(v); }
+/* the "late goods, full refund" term was taken out of the standard terms: remove it from terms saved earlier and renumber */
+function dropLateRefund(s) {
+  var lines = String(s).split('\n'), out = [], n = 0, changed = false;
+  lines.forEach(function (l) { if (/more than \d+ days after the estimated date/i.test(l)) { changed = true; return; } out.push(l); });
+  if (!changed) return s;
+  return out.map(function (l) { var m = /^\d+\.\s(.*)$/.exec(l); if (!m) return l; n++; return n + '. ' + m[1]; }).join('\n');
+}
 function sanitize(o) {
   var d = defaults();
   if (!o || typeof o !== 'object') return d;
   d.type = TYPES.indexOf(o.type) >= 0 ? o.type : 'proforma';
   var f = (o.f && typeof o.f === 'object') ? o.f : {};
-  Object.keys(d.f).forEach(function (k) { if (typeof f[k] === 'string') d.f[k] = f[k].slice(0, 1500); });
+  Object.keys(d.f).forEach(function (k) { if (typeof f[k] === 'string') d.f[k] = f[k].slice(0, 1500); if (k.indexOf('terms_') === 0) d.f[k] = dropLateRefund(d.f[k]); });
   var it = Array.isArray(o.items) ? o.items : [];
   for (var i = 0; i < 8; i++) {
     var r = it[i];
