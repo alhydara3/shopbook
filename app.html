@@ -401,8 +401,10 @@ function render() {
 function needShip() {
   return `<div class="panel empty"><h2>No shipment yet</h2><p>Add your first shipment in Setup: the money you exchanged, the costs, and the items you bought.</p>${OWN() ? '<button class="btn primary" data-act="newShip">Add a shipment</button>' : ''}</div>`;
 }
+const famPhoto = it => it.photo || (it.fam ? ((S.items.find(x => x.fam === it.fam && x.photo) || {}).photo || '') : '');
 function img(it, cls='thumb') {
-  return it.photo ? `<img class="${cls}" src="${esc(it.photo)}" alt="" loading="lazy">` : `<span class="${cls}" aria-hidden="true">${esc((it.code || '').slice(0, 7))}</span>`;
+  const ph = famPhoto(it);
+  return ph ? `<img class="${cls}" src="${esc(ph)}" alt="" loading="lazy">` : `<span class="${cls}" aria-hidden="true">${esc((it.code || '').slice(0, 7))}</span>`;
 }
 function priceTrio(r) {
   return `<div class="prices"><div class="p-ask"><div class="k">Ask</div><div class="v">${D(r.ask)}</div></div><div class="p-target"><div class="k">Target</div><div class="v">${D(r.target)}</div></div><div class="p-low"><div class="k">Lowest</div><div class="v">${D(r.lowest)}</div></div></div>`;
@@ -541,7 +543,7 @@ function vStock() {
   const st = ST();
   return `<section class="screen">
   <div class="panel"><div class="spread"><h2>Stock & prices</h2>
-    <div class="row"><button type="button" class="chip" aria-pressed="${S.priceCard}" data-act="priceCard">Price card view</button><button type="button" class="chip" aria-pressed="${S.insights}" data-act="insights">Best & slow sellers</button><button type="button" class="btn" data-act="priceList">Price-list pictures</button>${S.canWrite ? '<button type="button" class="btn" data-act="count">Count stock</button>' : ''}${OWN() ? '<button type="button" class="btn" data-act="bulkItems">Add several items</button><button type="button" class="btn" data-act="newItem">Add one item</button><button type="button" class="chip" aria-pressed="' + S.selMode + '" data-act="selMode">Select to delete</button>' : ''}</div></div>
+    <div class="row"><button type="button" class="chip" aria-pressed="${S.priceCard}" data-act="priceCard">Price card view</button><button type="button" class="chip" aria-pressed="${S.insights}" data-act="insights">Best & slow sellers</button><button type="button" class="btn" data-act="priceList">Price-list pictures</button>${S.canWrite ? '<button type="button" class="btn" data-act="count">Count stock</button>' : ''}${OWN() ? '<button type="button" class="btn" data-act="bulkItems">Add several items</button><button type="button" class="btn" data-act="newItem">Add one item</button><button type="button" class="btn" data-act="newProduct">Add a product with options</button><button type="button" class="chip" aria-pressed="' + S.selMode + '" data-act="selMode">Select to delete</button>' : ''}</div></div>
     <p class="note" style="margin:6px 0 10px"><b class="p-ask">Ask</b> = say this first · <b style="color:var(--target)">Target</b> = aim to sell here · <b class="p-low">Lowest</b> = never go below. Bargaining room ${P(st.bargain)}, lowest = own cost + ${P(st.floor)}${Object.keys(st.floors || {}).length || c.items.some(r => r.flSrc === 'item') ? ' (some groups or items use their own %)' : ''}${c.items.some(r => r.mkSrc === 'item' && r.forSale) ? ` ${c.items.filter(r => r.mkSrc === 'item' && r.forSale).length} item(s) use their own markup.` : ''}.</p>
     <input id="stockQ" type="search" placeholder="Search name, code or size" value="${esc(S.stockQ)}" aria-label="Search stock">
     <div class="chips" style="margin-top:10px">${groups.map(g => `<button type="button" class="chip" data-act="grp" data-g="${esc(g)}" aria-pressed="${S.stockGroup === g}">${esc(g)}</button>`).join('')}</div>
@@ -2231,6 +2233,114 @@ function posterSheetFor(it) {
 }
 
 /* Item form */
+/* ---------- Product with options (colour, memory, size…): one product made of real items, one per combination ---------- */
+const OPT_MAX = 40;
+function productSheet(fam, seedId) {
+  const ship = curShip(); if (!ship) return;
+  const c = calcShip(ship), st = ST(); const groups = Object.keys(st.markups || {});
+  const raw = id => S.items.find(x => x.id === id) || {};
+  const members = fam ? c.items.filter(i => i.fam === fam).sort((a, b) => String(a.code).localeCompare(String(b.code))) : [];
+  const seed = !fam && seedId ? c.items.find(i => i.id === seedId) : null;
+  const first = members[0] || seed || null;
+  const hasHist = id => S.sales.some(s => s.itemId === id) || (S.adjustments || []).some(a => a.itemId === id);
+  const names = first && first.optNames ? first.optNames.slice() : [];
+  const P = { fname: first ? (first.fname || first.name) : '', group: first ? first.group : (groups[0] || 'General'), desc: first ? (first.desc || '') : '', cat: first ? first.catHide !== true : true,
+    prefix: first ? (seed ? String(first.code) : String(first.code).replace(/-\d+$/, '')) : '', photo: first ? famPhoto(first) : '',
+    dep: first && first.poDep != null && num(first.poDep) > 0 ? Math.round(num(first.poDep) * 100) : '', when: first ? (first.poWhen || '') : '', sea: !!(first && first.bySea),
+    opts: names.map((n, k) => ({ name: n, text: [...new Set(members.map(m => (m.opts || [])[k]).filter(Boolean))].join('\n') })),
+    rows: (members.length ? members : seed ? [seed] : []).map(m => ({ id: m.id, code: m.code, vals: names.map((_, k) => (m.opts || [])[k] || ''), rmb: m.rmb || '', qty: m.qty == null ? 1 : m.qty, mode: m.shipMode || '', kg: m.kg || '', cbm: m.cbm || '', od: m.optDesc || '', photo: m.id === (first && first.id) ? '' : (raw(m.id).photo || '') })),
+    removed: [] };
+  const vals = k => String((P.opts[k] || {}).text || '').split('\n').map(s => s.trim()).filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
+  const label = r => r.vals.filter(Boolean).join(' / ') || 'Choose the options';
+  const draw = () => `<form id="prF" class="list" style="gap:12px">
+    <p class="note" style="margin:0">One product, many options. Each combination you list is a real item with its own price, stock or orders and cost. Buyers see one product and choose the options.</p>
+    <div class="fgrid"><label class="f">Product name<input data-p="fname" value="${esc(P.fname)}" placeholder="e.g. Laptop 15.6-inch"></label><label class="f">Code <span class="h">each option gets ${esc(P.prefix || 'CODE')}-1, -2…</span><input data-p="prefix" value="${esc(P.prefix)}" placeholder="e.g. LAP-001" ${members.length ? 'disabled' : ''}></label></div>
+    <label class="f">Group<select data-p="group">${groups.includes(P.group) || !P.group ? '' : `<option selected>${esc(P.group)}</option>`}${groups.map(g => `<option${g === P.group ? ' selected' : ''}>${esc(g)}</option>`).join('')}</select></label>
+    <label class="f">Details for buyers <span class="h">optional, the same for every option (up to 1000 letters)</span><textarea data-p="desc" rows="3" maxlength="1000">${esc(P.desc)}</textarea></label>
+    <label class="f">Photo <span class="h">optional, the small photo used everywhere (add the bigger catalogue photos in the first option's item)</span><input id="prPhoto" type="file" accept="image/*"></label>
+    ${P.photo ? `<img class="thumb lg" src="${esc(P.photo)}" alt="">` : ''}
+    ${HOST() ? `<label class="row" style="flex-wrap:nowrap"><input type="checkbox" data-p="cat" style="width:22px;min-height:22px" ${P.cat ? 'checked' : ''}> Show in the public catalogue</label>` : ''}
+    ${PO() ? `<div class="f cpbox"><b>Ordering this product</b><span class="h">optional, for every option; empty = the store's</span><div class="fgrid"><label class="f">Deposit (%) <span class="h">100 = full payment</span><input data-p="dep" inputmode="numeric" maxlength="4" value="${esc(P.dep)}"></label><label class="f">Arrives in about<input data-p="when" maxlength="40" value="${esc(P.when)}"></label></div>
+      <label class="row" style="flex-wrap:nowrap"><input type="checkbox" data-p="sea" style="width:22px;min-height:22px" ${P.sea ? 'checked' : ''}> Show the label "${esc(SEA_LABEL)}"</label></div>` : ''}
+    <div class="panel"><h3>Options</h3><p class="note">Name each kind of option, then one choice per line. Example: Memory → 16GB, 32GB.</p>
+      ${P.opts.map((o, k) => `<div class="f cpbox"><div class="spread"><b>Option ${k + 1}</b><button type="button" data-og="${k}" aria-label="Remove this option">×</button></div><label class="f">Name<input data-on="${k}" value="${esc(o.name)}" placeholder="e.g. Colour, Memory, Hard drive"></label><label class="f">Choices <span class="h">one per line</span><textarea data-ot="${k}" rows="3">${esc(o.text)}</textarea></label></div>`).join('')}
+      ${P.opts.length < 4 ? '<button type="button" class="btn" id="prAddO">Add an option (colour, memory…)</button>' : ''}
+      <button type="button" class="btn primary" id="prGen" ${P.opts.length ? '' : 'disabled'}>Make the combinations</button>
+      <p class="small muted" style="margin:0">Tap this after changing the choices. It adds the missing combinations; then remove the ones you do not have (×).</p></div>
+    <div class="panel"><h3>Your combinations (${P.rows.length}${P.rows.length >= OPT_MAX ? ', the most allowed' : ''})</h3>
+      ${P.rows.map((r, i) => `<div class="f cpbox" data-row="${i}"><div class="spread"><b>${esc(label(r))}</b><button type="button" data-rm="${i}" aria-label="Remove this combination">×</button></div>
+        ${P.opts.map((o, k) => `<label class="f">${esc(o.name || 'Option ' + (k + 1))}<select data-rv="${i}" data-k="${k}"><option value="">Choose…</option>${vals(k).map(v => `<option${v === r.vals[k] ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>`).join('')}
+        <div class="fgrid"><label class="f">China price (RMB)<input data-rf="rmb" data-i="${i}" inputmode="decimal" value="${esc(r.rmb)}"></label><label class="f">Pieces<input data-rf="qty" data-i="${i}" inputmode="numeric" value="${esc(r.qty)}"></label></div>
+        <div class="fgrid" style="grid-template-columns:repeat(3,1fr)"><label class="f">Shipped by<select data-rf="mode" data-i="${i}"><option value="">Not set</option><option value="air"${r.mode === 'air' ? ' selected' : ''}>Air</option><option value="sea"${r.mode === 'sea' ? ' selected' : ''}>Sea</option></select></label><label class="f">kg<input data-rf="kg" data-i="${i}" inputmode="decimal" value="${esc(r.kg)}"></label><label class="f">CBM<input data-rf="cbm" data-i="${i}" inputmode="decimal" value="${esc(r.cbm)}"></label></div>
+        <label class="f">Specs of this option <span class="h">shown in the catalogue, optional (up to 1000 letters)</span><textarea data-rf="od" data-i="${i}" rows="3" maxlength="1000">${esc(r.od)}</textarea></label>
+        ${i > 0 ? `<label class="f">Photo of this option <span class="h">optional; empty = the product's photo</span><input type="file" accept="image/*" data-rp="${i}"></label>${r.photo ? `<div class="row"><img class="thumb" src="${esc(r.photo)}" alt=""><button type="button" class="btn" data-rpx="${i}">Remove photo</button></div>` : ''}` : ''}</div>`).join('') || '<p class="note">Add an option above and tap Make the combinations.</p>'}</div>
+    <button type="submit" class="btn primary lg block">Save product</button></form>`;
+  openSheet(fam ? 'Edit product options' : seed ? 'Add options to ' + seed.name : 'Product with options', '<div id="prBody"></div>', sh => {
+    const body = $('#prBody', sh); const redraw = () => { body.innerHTML = draw(); }; redraw();
+    body.addEventListener('input', e => { const t = e.target;
+      if (t.dataset.p) P[t.dataset.p] = t.type === 'checkbox' ? t.checked : t.value;
+      else if (t.dataset.on != null) P.opts[+t.dataset.on].name = t.value;
+      else if (t.dataset.ot != null) P.opts[+t.dataset.ot].text = t.value;
+      else if (t.dataset.rf) P.rows[+t.dataset.i][t.dataset.rf] = t.value; });
+    body.addEventListener('change', e => { const t = e.target;
+      if (t.dataset.p && t.type === 'checkbox') P[t.dataset.p] = t.checked;
+      else if (t.dataset.rv != null) { P.rows[+t.dataset.rv].vals[+t.dataset.k] = t.value; const b = t.closest('[data-row]').querySelector('b'); if (b) b.textContent = label(P.rows[+t.dataset.rv]); }
+      else if (t.dataset.rf === 'mode') P.rows[+t.dataset.i].mode = t.value;
+      else if (t.dataset.rp != null && t.files && t.files[0]) shrink(t.files[0]).then(d => { P.rows[+t.dataset.rp].photo = d; redraw(); toast('Photo ready'); }).catch(() => toast('Could not read that photo.'));
+      else if (t.id === 'prPhoto' && t.files && t.files[0]) shrink(t.files[0]).then(d => { P.photo = d; redraw(); toast('Photo ready'); }).catch(() => toast('Could not read that photo.')); });
+    body.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return;
+      if (b.id === 'prAddO') { P.opts.push({ name: '', text: '' }); P.rows.forEach(r => r.vals.push('')); redraw(); }
+      if (b.dataset.og != null) { const k = +b.dataset.og; P.opts.splice(k, 1); P.rows.forEach(r => r.vals.splice(k, 1)); redraw(); }
+      if (b.dataset.rm != null) { const r = P.rows[+b.dataset.rm]; if (r.id && hasHist(r.id)) return toast('This combination has sales or stock changes, so it cannot be removed. Set its pieces to 0 instead.', 6000); if (r.id) P.removed.push(r.id); P.rows.splice(+b.dataset.rm, 1); redraw(); }
+      if (b.dataset.rpx != null) { P.rows[+b.dataset.rpx].photo = ''; redraw(); }
+      if (b.id === 'prGen') {
+        const lists = P.opts.map((_, k) => vals(k)); if (lists.some(l => !l.length)) return toast('Give every option a name and at least one choice.');
+        let combos = [[]]; lists.forEach(l => { const n = []; combos.forEach(cb => l.forEach(v => n.push(cb.concat([v])))); combos = n; });
+        const have = new Set(P.rows.map(r => r.vals.join('\u0001')));
+        const add = combos.filter(cb => !have.has(cb.join('\u0001')));
+        // an old row that has no choices yet (a plain item turned into a product) takes the first new combination
+        if (P.rows.length + add.length > OPT_MAX) return toast(`That makes ${P.rows.length + add.length} combinations. The most is ${OPT_MAX}: use fewer choices, or add the combinations by hand later.`, 7000);
+        const ph = P.rows.find(r => r.vals.every(v => !v)); if (ph && add.length) ph.vals = add.shift();
+        add.forEach(cb => P.rows.push({ id: '', code: '', vals: cb, rmb: '', qty: 1, mode: '', kg: '', cbm: '', od: '', photo: '' })); redraw(); }
+    });
+    body.addEventListener('submit', async e => {
+      e.preventDefault();
+      const fname = String(P.fname).trim(), prefix = String(P.prefix).trim().toUpperCase().replace(/\s+/g, '-');
+      if (!fname) return toast('Give the product a name.');
+      if (!prefix) return toast('Give the product a short code, e.g. LAP-001.');
+      if (!P.opts.length || P.opts.some(o => !String(o.name).trim())) return toast('Add at least one option and name it (e.g. Memory).');
+      if (!P.rows.length) return toast('Make the combinations first.');
+      const keys = new Set();
+      for (const r of P.rows) { const ok = r.vals.every((v, k) => v && vals(k).includes(v)); if (!ok) return toast('A combination has a choice that is empty or not in the options. Fix it or remove it (×): ' + label(r), 7000);
+        const key = r.vals.join('\u0001'); if (keys.has(key)) return toast('Two combinations are the same: ' + label(r)); keys.add(key);
+        if (!(num(r.rmb) > 0)) return toast('Give the China price (RMB) of: ' + label(r));
+        if (num(r.qty) < 0 || String(r.qty).trim() === '') return toast('Give the pieces of: ' + label(r)); }
+      const dv = String(P.dep).replace('%', '').trim(); if (PO() && dv !== '' && !(num(dv) >= 10 && num(dv) <= 100)) return toast('Write a deposit from 10 to 100 %, or leave it empty to use the store\'s.');
+      const famId = fam || 'f' + Date.now().toString(36);
+      const optNames = P.opts.map(o => String(o.name).trim());
+      let n = 0; const used = new Set(P.rows.map(r => r.code).filter(Boolean)); const btn = $('#prF button[type=submit]', sh); btn.disabled = true;
+      for (let i = 0; i < P.rows.length; i++) { const r = P.rows[i];
+        if (!r.code) { do { n++; r.code = prefix + '-' + n; } while (used.has(r.code) || S.items.some(x => x.id === ship.id + '-' + r.code.replace(/[^A-Za-z0-9_\-.~:@+]/g, '-'))); used.add(r.code); }
+        const id = r.id || (ship.id + '-' + r.code.replace(/[^A-Za-z0-9_\-.~:@+]/g, '-'));
+        const d = { ...raw(r.id) }; delete d.id;
+        ['shipMode', 'kg', 'cbm', 'optDesc', 'catHide', 'poDep', 'poWhen', 'bySea', 'photo'].forEach(k => delete d[k]);
+        Object.assign(d, { ship: d.ship || ship.id, code: r.code, name: fname + ' — ' + r.vals.join(' / '), fname, fam: famId, optNames, opts: r.vals.slice(), group: P.group, sizes: '', desc: String(P.desc).replace(/\r\n?/g, '\n').trim().slice(0, 1000),
+          qty: Math.max(0, Math.round(num(r.qty))), rmb: num(r.rmb), forSale: true });
+        if (r.mode) d.shipMode = r.mode; if (num(r.kg) > 0) d.kg = num(r.kg); if (num(r.cbm) > 0) d.cbm = num(r.cbm);
+        const od = String(r.od).replace(/\r\n?/g, '\n').trim().slice(0, 1000); if (od) d.optDesc = od;
+        if (HOST() && !P.cat) d.catHide = true; else if (!HOST() && raw(r.id).catHide) d.catHide = true;
+        if (PO()) { if (dv !== '') d.poDep = num(dv) / 100; const w = String(P.when).replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, 40); if (w) d.poWhen = w; if (P.sea) d.bySea = true; }
+        else { const o = raw(r.id); if (o.poDep != null) d.poDep = o.poDep; if (o.poWhen) d.poWhen = o.poWhen; if (o.bySea) d.bySea = o.bySea; }
+        const ph = i === 0 ? P.photo : r.photo; if (ph) d.photo = ph;
+        btn.textContent = `Saving ${i + 1} of ${P.rows.length}…`;
+        if (!(await write(() => S.db.doc('items/' + id).set(d), null))) { btn.disabled = false; btn.textContent = 'Save product'; return; } }
+      for (const id of P.removed) { if (HOST() && HOST().photos) HOST().photos('save', id, []).catch(() => {}); await write(() => S.db.doc('items/' + id).delete(), null); }
+      logEvent(fam ? 'Changed a product with options' : 'Added a product with options', famId, `${fname}: ${P.rows.length} combinations`);
+      toast('Product saved'); closeSheet();
+    });
+  });
+}
+
 function itemSheet(itemId) {
   const ship = curShip(); const c = calcShip(ship);
   const it = itemId ? c.items.find(i => i.id === itemId) : null;
@@ -2243,6 +2353,7 @@ function itemSheet(itemId) {
   openSheet(it ? it.name : 'Add item', `${it ? `<div class="row" style="flex-wrap:nowrap">${img(it, 'thumb lg')}<div class="small muted">${esc(it.code)} · ${esc(it.group)}${it.sizes ? '<br>' + esc(it.sizes) : ''}</div></div>${it.catHide === true && it.forSale ? '<p class="small" style="margin:0"><span class="pill">Not in the public catalogue</span></p>' : ''}${PO() && (itSea(it) || itOwnPo(it)) ? `<p class="small" style="margin:0">${itSea(it) ? `<span class="pill">${esc(SEA_LABEL)}</span> ` : ''}${itOwnPo(it) ? esc(`This product: ${depWord(itDep(it))} · ${poArrive(itWhen(it))}`) : ''}</p>` : ''}${it.desc ? `<div><h3 style="margin:0 0 4px">Details for buyers</h3><p class="idesc">${esc(it.desc)}</p></div>` : ''}` : ''}${info}
     ${it && it.forSale && S.canWrite ? `<button type="button" class="btn block" id="iAdj">Damaged, lost, given away or found? Record a stock change</button>` : ''}
     ${it && it.forSale && PO() && OWN() ? `<button type="button" class="btn block" id="iPoster">Make a poster for this item</button>` : ''}
+    ${it && OWN() ? it.fam ? `<p class="note" style="margin:0">This is one option of the product "${esc(it.fname || '')}".</p><button type="button" class="btn block" id="iOpts">Edit this product's options</button>` : `<button type="button" class="btn block" id="iOpts">Add options to this item (colour, size, memory…)</button>` : ''}
     ${ro && S.canWrite ? '<p class="note" style="margin:0">Only the owner can change prices and item details.</p>' : ''}
     ${ro ? '' : `<form id="itF" class="list" style="gap:12px">
       <div class="fgrid"><label class="f">Code<input id="iCode" value="${esc(v.code)}" placeholder="e.g. SHO-008"></label><label class="f">Name<input id="iName" value="${esc(v.name)}"></label></div>
@@ -2285,6 +2396,7 @@ function itemSheet(itemId) {
     ${adjs.length ? `<div><h3>Stock changes</h3><div class="list">${adjs.map(a => `<div class="li" style="grid-template-columns:1fr auto"><span class="small">${short(a.date)} · ${esc(a.reason)}${a.note ? ' · ' + esc(a.note) : ''} · by ${esc(whoName(a.by))}</span><b>${num(a.qty) > 0 ? '+' : ''}${esc(a.qty)}</b></div>`).join('')}</div></div>` : ''}
     ${hist.length ? `<div><h3>Sales of this item</h3><div class="list">${hist.slice(0, 20).map(s => `<div class="li" style="grid-template-columns:1fr auto"><span class="small">${short(s.date)} · ${esc(s.qty)} pc${s.size ? ' · ' + esc(s.size) : ''} · ${esc(s.payment)}</span><b>${D(s.total)}</b></div>`).join('')}</div></div>` : ''}`, sh => {
     const aj = $('#iAdj', sh); if (aj) aj.onclick = () => { closeSheet(); adjSheet(it.id); };
+    const io = $('#iOpts', sh); if (io) io.onclick = () => { closeSheet(); productSheet(it.fam || null, it.fam ? null : it.id); };
     const pst = $('#iPoster', sh); if (pst) pst.onclick = () => { try { posterSheetFor(it); } catch (err) { toast('Could not open the poster: ' + String((err && err.message) || err).slice(0, 120)); } };
     const f = $('#itF', sh); if (!f) return;
     { const g = id => num($(id, sh).value), cbmEl = $('#iCbm', sh);
@@ -2380,6 +2492,7 @@ function itemSheet(itemId) {
         if ($('#iSea', sh).checked) d.bySea = true;
       } else if (it) { if (it.poDep != null) d.poDep = it.poDep; if (it.poWhen) d.poWhen = it.poWhen; if (it.bySea) d.bySea = it.bySea; }   // a shop with stock keeps them as they are
       if (it && it.note) d.note = it.note;
+      if (it && it.fam) { d.fam = it.fam; d.fname = it.fname; d.optNames = it.optNames; d.opts = it.opts; if (it.optDesc) d.optDesc = it.optDesc; }   // one option of a product with options
       if (hd && cp.length) d.photoHD = true;
       if (d.markupPct != null && !(d.markupPct >= 0)) return toast('Write the markup as a number, e.g. 60.');
       if (!d.name) return toast('Give the item a name.');
@@ -3192,6 +3305,7 @@ document.addEventListener('click', e => {
   else if (a === 'pay') paySheet(id);
   else if (a === 'item') itemSheet(id);
   else if (a === 'newItem') itemSheet(null);
+  else if (a === 'newProduct') productSheet(null);
   else if (a === 'newExp') expSheet(null);
   else if (a === 'editExp') expSheet(id);
   else if (a === 'newShip') wizard('new');

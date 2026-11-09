@@ -67,6 +67,12 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
 .msg{background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px;text-align:center;color:var(--muted)}
 .msg button{margin-top:12px;font:inherit;font-weight:700;border:0;border-radius:10px;background:var(--navy);color:#fff;padding:10px 18px;min-height:44px;cursor:pointer}
 .note{color:var(--muted);font-size:13px;margin-top:18px;text-align:center;white-space:pre-line;overflow-wrap:anywhere}
+.opn{font-size:13px;color:var(--muted);margin-top:4px}
+.oh{font-size:14px;font-weight:700;margin:12px 0 6px}
+.oc{display:flex;flex-wrap:wrap;gap:8px}
+.oc button{font:inherit;font-size:14px;text-align:left;border:1.5px solid var(--line);background:#f3f4f6;color:var(--ink);border-radius:10px;padding:8px 12px;min-height:40px;cursor:pointer;overflow-wrap:anywhere}
+.oc button[aria-pressed=true]{border-color:#c0392b;background:#fdecea;color:#b02a1d;font-weight:700}
+.oc button.alt{opacity:.55}
 .more{font:inherit;font-size:14px;font-weight:700;border:1px solid var(--navy);background:#fff;color:var(--navy);border-radius:10px;padding:6px 10px;min-height:40px;cursor:pointer;width:100%}
 .more:hover{background:#e8edf6}
 .badge{position:absolute;right:8px;bottom:8px;background:rgba(10,18,30,.72);color:#fff;font-size:12px;font-weight:700;border-radius:999px;padding:3px 8px}
@@ -133,8 +139,50 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
       .then(function (t) { var o = JSON.parse(t); if (!o || !o.ok) throw new Error((o && o.error) || 'bad reply'); show(o.value); })
       .catch(function () { $('out').innerHTML = '<div class="msg">The products could not be loaded. Check the internet and try again.<br><button type="button" id="retry">Try again</button></div>'; $('retry').onclick = load; });
   }
+  // products with options: the items of one product (fam) become one card; only the combinations the owner lists exist
+  function mix(P, v) {
+    var gp = Number(v.more) > 0 ? v : P.vs.filter(function (y) { return Number(y.more) > 0; })[0], vv = v.vid ? v : P.vs.filter(function (y) { return y.vid; })[0];
+    var x = {}; for (var k in v) x[k] = v[k];
+    x.P = P; x.name = P.name; x.vname = v.name; x.group = P.group; x.sizes = ''; x.desc = P.desc; x.od = v.od || '';
+    x.photo = v.photo || P.famPhoto || '';
+    x.pid = gp ? gp.pid : v.pid; x.more = gp ? Number(gp.more) || 0 : 0; x.hd = gp && gp.hd && x.photo === gp.photo ? 1 : 0;
+    x.vid = vv ? vv.vid : null; x.vpid = vv ? vv.pid : v.pid; return x;
+  }
+  function fold(items) {
+    var out = [], idx = {};
+    items.forEach(function (x) {
+      if (!x.fam || !x.ov || !x.on) { out.push(x); return; }
+      var P = idx[x.fam]; if (!P) { P = idx[x.fam] = { isFam: true, fam: x.fam, name: x.fn || x.name, group: x.group, desc: x.desc || '', on: x.on, vs: [], sel: 0, code: x.code, price: 0 }; out.push(P); }
+      P.vs.push(x);
+    });
+    out.forEach(function (P) {
+      if (!P.isFam) return;
+      P.vs.sort(function (a, b) { return (Number(a.price) || 0) - (Number(b.price) || 0) || String(a.code).localeCompare(String(b.code)); });
+      var withPh = P.vs.filter(function (y) { return y.photo; })[0]; P.famPhoto = withPh ? withPh.photo : '';
+      P.hay = P.name + ' ' + P.vs.map(function (y) { return y.name + ' ' + (y.od || ''); }).join(' ');
+      P.cardX = mix(P, P.vs[0]); P.cardX.isFrom = P.vs.length > 1 && P.vs.some(function (y) { return y.price !== P.vs[0].price; });
+      P.price = P.vs[0].price;
+    });
+    return out;
+  }
+  function pickOpt(P, k, val) {
+    var cur = P.vs[P.sel].ov, best = -1, bi = P.sel;
+    P.vs.forEach(function (v, i) { if (v.ov[k] !== val) return; var m = 0; v.ov.forEach(function (o, j) { if (j !== k && o === cur[j]) m++; }); if (m > best) { best = m; bi = i; } });
+    P.sel = bi;
+  }
+  function optBlock(P) {
+    var cur = P.vs[P.sel];
+    return P.on.map(function (nm, k) {
+      var vals = P.vs.map(function (v) { return v.ov[k]; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+      return '<div class="oh">' + esc(nm) + '</div><div class="oc">' + vals.map(function (v) {
+        var fits = P.vs.some(function (y) { return y.ov[k] === v && y.ov.every(function (o, j) { return j === k || o === cur.ov[j]; }); });
+        return '<button type="button" data-ok="' + k + '" data-ov="' + esc(v) + '" aria-pressed="' + (cur.ov[k] === v) + '"' + (fits ? '' : ' class="alt"') + '>' + esc(v) + '</button>';
+      }).join('') + '</div>';
+    }).join('');
+  }
   function show(v) {
     data = v || {};
+    if (Array.isArray(data.items)) data.items = fold(data.items);
     var name = data.business || CFG.name || 'Our shop';
     $('nm').textContent = name; document.title = name + ' · Products';
     // the shop's logo (the receipt logo), only a picture sent as data; otherwise no logo
@@ -157,18 +205,19 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
   function render() {
     var q = $('q').value.trim().toLowerCase(), wa = waNum(data.phone), name = data.business || CFG.name || '';
     var list = (data.items || []).filter(function (x) {
-      return (group === 'All' || x.group === group) && (!q || (x.name + ' ' + x.code + ' ' + x.group + ' ' + x.sizes + ' ' + (x.desc || '')).toLowerCase().indexOf(q) >= 0);
+      return (group === 'All' || x.group === group) && (!q || ((x.hay || x.name) + ' ' + x.code + ' ' + x.group + ' ' + x.sizes + ' ' + (x.desc || '')).toLowerCase().indexOf(q) >= 0);
     });
     $('count').textContent = (data.items || []).length ? list.length + ' product' + (list.length === 1 ? '' : 's') : '';
     if (!(data.items || []).length) { $('out').innerHTML = (ord() ? '<div class="msg">No products to order right now. Come back soon.</div>' : '<div class="msg">Nothing in stock to show right now. Come back soon.</div>'); return; }
     if (!list.length) { $('out').innerHTML = '<div class="msg">Nothing matches your search.</div>'; return; }
     shown = list;
     $('out').innerHTML = '<div class="grid">' + list.map(function (x, i) {
+      var P = x; x = P.cardX || P;
       var ph = x.photo ? '<img src="' + esc(x.photo) + '" alt="' + esc(x.name) + '" loading="lazy">' : esc(x.code || '');
       var askLink = wa ? '<a class="ask" href="' + askUrl(x) + '" target="_blank" rel="noopener">Ask us</a>' : '';
-      var n = 1 + (Number(x.more) || 0);
+      var n = (x.hd ? 0 : 1) + (Number(x.more) || 0) || 1;
       return '<article class="card"><div class="ph tap" data-i="' + i + '">' + ph + (x.photo && n > 1 ? '<span class="badge">' + n + ' photos</span>' : '') + (x.vid ? '<span class="badge vb">▶ video</span>' : '') + '</div><div class="body">' + (sea(x) ? '<span class="tag">' + SEA + '</span>' : '') + '<div class="nm">' + esc(x.name) + '</div>' +
-        '<div class="pr"><div class="p-price"><div class="k">Price</div><div class="v">' + D(x.price) + '</div></div></div>' +
+        '<div class="pr"><div class="p-price"><div class="k">' + (x.isFrom ? 'From' : 'Price') + '</div><div class="v">' + D(x.price) + '</div></div></div>' + (P.cardX ? '<div class="opn">' + P.vs.length + ' option' + (P.vs.length === 1 ? '' : 's') + '</div>' : '') +
         (ord() ? (full(x) ? (whenOwn(x) ? '<div class="dep">Arrives in about ' + esc(whenOwn(x)) + '</div>' : '') : '<div class="dep">Deposit <b>' + D(depOf(x)) + '</b> (' + pct(x) + ')' + (whenOwn(x) ? '<br>Arrives in about ' + esc(whenOwn(x)) : '') + '</div>') : '') +
         '<button type="button" class="more" data-i="' + i + '">Details</button>' +
         '<div class="foot"><span class="left">' + esc(leftText(x)) + '</span>' + askLink + '</div></div></article>';
@@ -194,20 +243,23 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
   }
   function askUrl(x) {
     var name = data.business || CFG.name || '';
-    return 'https://wa.me/' + waNum(data.phone) + '?text=' + encodeURIComponent(ord() ? 'Hello ' + name + ', I would like to order ' + x.name + (x.code ? ' (' + x.code + ')' : '') + ', price ' + D(x.price) + '.' : 'Hello ' + name + ', I am interested in ' + x.name + (x.code ? ' (' + x.code + ')' : '') + '.');
+    return 'https://wa.me/' + waNum(data.phone) + '?text=' + encodeURIComponent(ord() ? 'Hello ' + name + ', I would like to order ' + (x.vname || x.name) + (x.code ? ' (' + x.code + ')' : '') + ', price ' + D(x.price) + '.' : 'Hello ' + name + ', I am interested in ' + (x.vname || x.name) + (x.code ? ' (' + x.code + ')' : '') + '.');
   }
   // the details of one product, over the list; the phone's Back button closes it
   var opened = false, lastFocus = null, extra = {}, showing = null;
   var okPhoto = function (p) { return typeof p === 'string' && /^data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+\/=]+$/.test(p); };
   function openDetails(x) {
+    var P0 = x.isFam ? x : null, sc = [$('ov').scrollTop, $('dlg').scrollTop]; if (P0) x = mix(P0, P0.vs[P0.sel]);
     var wa = waNum(data.phone), more = Number(x.more) || 0; showing = x;
     $('dlg').innerHTML = '<div class="top"><button type="button" class="x" id="dlgX" aria-label="Close">✕</button></div>' +
       (x.photo || more || x.vid ? '<div class="gal" id="gal"><div class="track" id="track"></div><button type="button" class="gnav prev" id="gPrev" aria-label="Previous photo">‹</button><button type="button" class="gnav next" id="gNext" aria-label="Next photo">›</button><span class="gcount" id="gCount" hidden></span></div>' : '') +
       '<div class="in">' + (sea(x) ? '<span class="tag">' + SEA + '</span>' : '') + '<h2 id="dlgT">' + esc(x.name) + '</h2>' +
       (x.code ? '<div class="sz">' + esc(x.code) + '</div>' : '') +
+      (P0 ? '<div class="opts">' + optBlock(P0) + '</div>' : '') +
       '<div class="pr"><div class="p-price"><div class="k">Price</div><div class="v">' + D(x.price) + '</div></div></div>' +
       (ord() ? '<div class="howto"><b>How ordering works</b><br>' + (sea(x) ? 'This product is made to order and comes by sea. ' : '') + (full(x) ? 'Pay the full price (' + D(x.price) + ') to order. We order it from China for you' + (whenOf(x) ? '; it arrives in about ' + esc(whenOf(x)) : '') + '.' : 'Pay a deposit of ' + D(depOf(x)) + ' (' + pct(x) + ') to order. We order it from China for you' + (whenOf(x) ? '; it arrives in about ' + esc(whenOf(x)) : '') + '. Pay the rest (' + D(Number(x.price) - depOf(x)) + ') when it arrives.') + '</div>' : '<div class="left">' + esc(leftText(x)) + '</div>') +
       (x.sizes ? '<h3>Sizes / colours</h3><p class="txt">' + esc(x.sizes) + '</p>' : '') +
+      (x.od ? '<h3>This option</h3><p class="txt">' + esc(x.od) + '</p>' : '') +
       (x.desc ? '<h3>Details</h3><p class="txt">' + esc(x.desc) + '</p>' : '') +
       (wa ? '<a class="askbig" href="' + askUrl(x) + '" target="_blank" rel="noopener">' + (ord() ? 'Order this on WhatsApp' : 'Ask about this on WhatsApp') + '</a>' : '') + '</div>';
     drawGallery(x); if (x.vid) drawVideo(x, !(x.photo || more));
@@ -217,7 +269,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
         .catch(function () { extra[x.pid] = null; })
         .then(function () { if (showing === x) drawGallery(x); if (extra[x.pid] === null) delete extra[x.pid]; });
     }
-    lastFocus = document.activeElement; $('ov').hidden = false; document.body.style.overflow = 'hidden'; $('dlgX').focus();
+    if ($('ov').hidden) lastFocus = document.activeElement; $('ov').hidden = false; document.body.style.overflow = 'hidden'; if (P0) { $('ov').scrollTop = sc[0]; $('dlg').scrollTop = sc[1]; } else $('dlgX').focus();
     if (!opened) { opened = true; try { history.pushState({ details: 1 }, ''); } catch (e) {} }
   }
   // the video: a small window over the photos (like the shopping apps); nothing is loaded until ▶ is tapped
@@ -234,7 +286,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
     box._close = function () { box.remove(); var b = document.createElement('button'); b.type = 'button'; b.className = 'vopen'; b.id = 'vOpen'; b.textContent = '▶ Video'; b.onclick = function () { drawVideo(x, big); }; g.appendChild(b); };
     $('vX').onclick = box._close;
     $('vPlay').onclick = function () { playVideo(x, box); };
-    if (vids[x.pid] && vids[x.pid].url) playVideo(x, box);
+    if (vids[x.vpid || x.pid] && vids[x.vpid || x.pid].url) playVideo(x, box);
   }
   function part(pid, i) {
     return fetch(CFG.api, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'catalogVideo', args: [pid, i] }), credentials: 'omit', cache: 'no-store' })
@@ -242,7 +294,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
   }
   var bytes = function (b64) { var s = atob(b64), a = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a; };
   function playVideo(x, box) {
-    var c = vids[x.pid] || (vids[x.pid] = {});
+    var c = vids[x.vpid || x.pid] || (vids[x.vpid || x.pid] = {});
     var show = function () {
       if (!box.isConnected) return;
       box.innerHTML = '<video src="' + c.url + '" playsinline autoplay></video><button type="button" class="vbig" id="vBig" aria-label="Bigger or smaller">⤢</button><button type="button" class="vx" id="vX" aria-label="Close the video">✕</button>';
@@ -259,11 +311,11 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
     if (c.busy) return; c.busy = true;
     var load = document.createElement('div'); load.className = 'vload'; load.textContent = 'Loading the video…'; box.appendChild(load);
     var got = [], done = 0, n = 0, type = 'video/mp4';
-    part(x.pid, 0).then(function (p0) {
+    part(x.vpid || x.pid, 0).then(function (p0) {
       n = Math.max(1, Math.min(24, Number(p0.n) || 1)); type = /^video\/(mp4|webm)$/.test(p0.type) ? p0.type : 'video/mp4'; got[0] = bytes(p0.b64); done = 1;
       load.textContent = 'Loading the video… ' + Math.round(100 * done / n) + '%';
       var next = 1;
-      var worker = function () { if (next >= n) return Promise.resolve(); var i = next++; return part(x.pid, i).then(function (p) { got[i] = bytes(p.b64); done++; load.textContent = 'Loading the video… ' + Math.round(100 * done / n) + '%'; return worker(); }); };
+      var worker = function () { if (next >= n) return Promise.resolve(); var i = next++; return part(x.vpid || x.pid, i).then(function (p) { got[i] = bytes(p.b64); done++; load.textContent = 'Loading the video… ' + Math.round(100 * done / n) + '%'; return worker(); }); };
       return Promise.all([worker(), worker(), worker()]);
     }).then(function () {
       c.url = URL.createObjectURL(new Blob(got, { type: type })); c.busy = false; show();
@@ -275,7 +327,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
   // the photos of one product: the main one, then the catalogue photos (swipe, or the arrows on a computer)
   function drawGallery(x) {
     var tr = $('track'); if (!tr) return;
-    var more = Number(x.more) || 0, got = extra[x.pid], list = (x.photo ? [x.photo] : []).concat(got || []);
+    var more = Number(x.more) || 0, got = extra[x.pid], list = (x.photo && !(x.hd && got && got.length) ? [x.photo] : []).concat(got || []);   // the main photo first, then the catalogue photos (when the first catalogue photo is the large copy of the main one, the small one is left out)
     var slides = list.map(function (src, k) { return '<div class="slide"><img src="' + esc(src) + '" alt="' + esc(x.name) + ' photo ' + (k + 1) + '"></div>'; });
     if (more && got === undefined) slides.push('<div class="slide wait">Loading more photos…</div>');
     if (more && got === null) slides.push('<div class="slide wait">More photos could not be loaded. Check the internet.</div>');
@@ -296,6 +348,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
   }
   var shown = [];
   $('out').addEventListener('click', function (e) { var b = e.target.closest('[data-i]'); if (b && shown[+b.getAttribute('data-i')]) openDetails(shown[+b.getAttribute('data-i')]); });
+  $('dlg').addEventListener('click', function (e) { var b = e.target.closest('[data-ok]'); if (!b || !showing || !showing.P) return; pickOpt(showing.P, +b.getAttribute('data-ok'), b.getAttribute('data-ov')); openDetails(showing.P); });
   $('ov').addEventListener('click', function (e) { if (e.target === $('ov') || e.target.closest('#dlgX')) closeDetails(false); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeDetails(false); });
   window.addEventListener('popstate', function () { closeDetails(true); });
