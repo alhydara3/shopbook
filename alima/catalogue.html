@@ -37,6 +37,9 @@ h1{font-family:"Bricolage Grotesque",system-ui,sans-serif;font-weight:800;font-s
 @media (min-width:640px){#logo{width:72px;height:72px}}
 .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .acts a{display:inline-flex;align-items:center;gap:6px;min-height:42px;padding:8px 14px;border-radius:999px;font-weight:700;text-decoration:none;font-size:15px}
+.acts a.fbi{padding:8px;min-width:42px;justify-content:center;background:#1877f2;color:#fff}
+.fbfoot[hidden]{display:none}
+.fbfoot{display:inline-flex;align-items:center;gap:6px;margin-top:8px;color:#1877f2;font-weight:700;text-decoration:none;font-size:14px}
 .wa{background:#fff;color:var(--navy)}.call{border:1px solid rgba(255,255,255,.5);color:#fff}
 main{padding:14px 16px 40px}
 .tools{position:sticky;top:0;z-index:5;background:var(--bg);padding:10px 0 8px}
@@ -122,6 +125,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
   <div class="count" id="count" aria-live="polite"></div>
   <div id="out"><div class="msg">Loading the products…</div></div>
   <p class="note" id="foot">Prices in Dalasi. Stock changes during the day: ask us before you come.</p>
+  <a class="fbfoot" id="fbFoot" target="_blank" rel="noopener noreferrer" hidden><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M24 12a12 12 0 1 0-13.9 11.9v-8.4H7.1V12h3V9.4c0-3 1.8-4.7 4.5-4.7 1.3 0 2.7.2 2.7.2v3h-1.5c-1.5 0-2 .9-2 1.9V12h3.4l-.5 3.5h-2.9v8.4A12 12 0 0 0 24 12z"/></svg><span>Our Facebook page</span></a>
 </main>
 <div class="ov" id="ov" hidden><div class="dlg" id="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgT"></div></div>
 <script>
@@ -196,7 +200,10 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
     $('sub').textContent = [data.town, when ? 'updated ' + when : ''].filter(Boolean).join(' · ');
     var wa = waNum(data.phone), acts = '';
     if (wa) acts += '<a class="wa" href="https://wa.me/' + wa + '?text=' + encodeURIComponent('Hello ' + name + ', I saw your products.') + '" target="_blank" rel="noopener">WhatsApp us</a><a class="call" href="tel:+' + wa + '">Call ' + esc(data.phone) + '</a>';
+    var fb = typeof data.fb === 'string' && data.fb.length <= 200 && /^https:\/\/((www|m|web)\.)?(facebook\.com|fb\.com|fb\.me)(\/[^\s"'<>]*)?$/i.test(data.fb) ? data.fb : '';
+    if (fb && data.fbH !== false) acts += '<a class="fbi" href="' + esc(fb) + '" target="_blank" rel="noopener noreferrer" aria-label="Our Facebook page" title="Our Facebook page"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M24 12a12 12 0 1 0-13.9 11.9v-8.4H7.1V12h3V9.4c0-3 1.8-4.7 4.5-4.7 1.3 0 2.7.2 2.7.2v3h-1.5c-1.5 0-2 .9-2 1.9V12h3.4l-.5 3.5h-2.9v8.4A12 12 0 0 0 24 12z"/></svg></a>';
     $('acts').innerHTML = acts;
+    $('fbFoot').hidden = !(fb && data.fbF !== false); if (fb) $('fbFoot').href = fb;
     var groups = ['All'].concat((data.items || []).map(function (x) { return x.group; }).filter(function (g, i, a) { return g && a.indexOf(g) === i; }));
     $('chips').innerHTML = groups.length > 2 ? groups.map(function (g) { return '<button type="button" data-g="' + esc(g) + '" aria-pressed="' + (g === group) + '">' + esc(g) + '</button>'; }).join('') : '';
     $('tools').hidden = !(data.items || []).length;

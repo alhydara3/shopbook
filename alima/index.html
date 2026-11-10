@@ -1698,6 +1698,29 @@ function catLeftSheet() {
 const CAT_FOOT = 'Prices in Dalasi. Stock changes during the day: ask us before you come.';
 const catStd = () => PO() ? (isFull(PO_DEP()) ? `Prices in Dalasi. We order from China for you: pay the price to order${PO_WHEN() ? '; it arrives in about ' + PO_WHEN() : ''}.` : `Prices in Dalasi. We order from China for you: pay ${P(PO_DEP())} to order and the rest when it arrives${PO_WHEN() ? ' (about ' + PO_WHEN() + ')' : ''}.`) : CAT_FOOT;
 const catFoot = () => { const f = String((ST().catalog || {}).footer || '').trim(); return f || catStd(); };
+/* Facebook page link: only an https link to facebook.com, fb.com or fb.me is kept; empty = no icon */
+const fbClean = u => { u = String(u || '').trim(); if (!u) return ''; if (!/^[a-z]+:\/\//i.test(u)) u = 'https://' + u;
+  try { const x = new URL(u); if (x.protocol !== 'https:' || x.username || x.password || !/^((www|m|web)\.)?(facebook\.com|fb\.com|fb\.me)$/i.test(x.hostname)) return null; const h = x.href; return h.length <= 200 && !/\s/.test(h) ? h : null; } catch (e) { return null; } };
+function catFbSheet() {
+  const cs = ST().catalog || {};
+  openSheet('Facebook page link', `<form id="fbF" class="list" style="gap:12px">
+    <p class="note" style="margin:0">Shows a Facebook icon on the public catalogue that opens your page. Leave the link empty and no icon shows. Only facebook.com, fb.com and fb.me links are accepted.</p>
+    <label class="f">Link to your Facebook page<input id="fbU" inputmode="url" autocapitalize="off" maxlength="200" placeholder="https://www.facebook.com/your-page" value="${esc(cs.fb || '')}"></label>
+    <label class="row" style="flex-wrap:nowrap"><input type="checkbox" id="fbH" style="width:22px;min-height:22px" ${cs.fbH === false ? '' : 'checked'}> Show the icon at the top (next to WhatsApp and Call)</label>
+    <label class="row" style="flex-wrap:nowrap"><input type="checkbox" id="fbB" style="width:22px;min-height:22px" ${cs.fbF === false ? '' : 'checked'}> Show the icon at the bottom (under the products)</label>
+    <p class="small muted" style="margin:0">The catalogue is public: anyone who opens it can tap this link.</p>
+    <div class="fgrid"><button class="btn" type="button" id="fbX">Remove the link</button><button class="btn primary" type="submit">Save</button></div></form>`, sh => {
+    $('#fbX', sh).onclick = () => { $('#fbU', sh).value = ''; };
+    $('#fbF', sh).addEventListener('submit', async e => {
+      e.preventDefault();
+      const raw = $('#fbU', sh).value, u = fbClean(raw);
+      if (u === null) return toast('That is not a Facebook link. Use one that starts with https://www.facebook.com/ (or fb.com, fb.me).', 6000);
+      const next = { ...(ST().catalog || {}), fb: u, fbH: $('#fbH', sh).checked, fbF: $('#fbB', sh).checked };
+      if (!u) { delete next.fb; delete next.fbH; delete next.fbF; }
+      if (await saveSettings({ catalog: next })) { logEvent('Catalogue setting', 'settings', u ? 'Facebook link: ' + u : 'Facebook link removed'); toast('Saved. The catalogue shows it the next time it is opened.'); closeSheet(); }
+    });
+  });
+}
 function catFootSheet() {
   openSheet('Catalogue footer text', `<form id="cfF" class="list" style="gap:12px">
     <p class="note" style="margin:0">The last line of the public catalogue page, under the products. Plain text only (no links or bold); a new line stays a new line. Empty the box to go back to the standard sentence.</p>
@@ -1847,7 +1870,7 @@ function catalogPanel() {
     ${on && !link ? '<p class="note">Open the Shop Book app (the installed one) to see and copy the link.</p>' : ''}
     ${on ? `<p class="small muted" style="margin:8px 0 0">${c ? `Last updated ${esc(when)} · ${(c.items || []).length} products` : 'Being prepared'}. It updates by itself whenever you or ${esc(SELLER())} open the Shop Book.</p>` : ''}
     <p class="small" style="margin:8px 0 0">Footer: <span class="muted" style="white-space:pre-line">${esc(catFoot())}</span></p>
-    ${OWN() ? `<div class="fgrid" style="margin-top:10px">${PO() ? '' : '<button type="button" class="btn" data-act="catLeft">Pieces left: change what buyers see</button>'}<button type="button" class="btn" data-act="catFoot">Footer text: change it</button><button type="button" class="btn ${on ? 'ghost' : 'primary'}" data-act="catToggle">${on ? 'Turn the catalogue off' : 'Turn the catalogue on'}</button></div>` : ''}</div>`;
+    ${OWN() ? `<div class="fgrid" style="margin-top:10px">${PO() ? '' : '<button type="button" class="btn" data-act="catLeft">Pieces left: change what buyers see</button>'}<button type="button" class="btn" data-act="catFoot">Footer text: change it</button><button type="button" class="btn" data-act="catFb">Facebook page link${(ST().catalog || {}).fb ? ': on' : ''}</button><button type="button" class="btn ${on ? 'ghost' : 'primary'}" data-act="catToggle">${on ? 'Turn the catalogue off' : 'Turn the catalogue on'}</button></div>` : ''}</div>`;
 }
 function catalogBody() {
   const items = [];
@@ -3673,6 +3696,7 @@ document.addEventListener('click', e => {
   else if (a === 'orders') ordersSheet();
   else if (a === 'poSet') poSetSheet();
   else if (a === 'catFoot') catFootSheet();
+  else if (a === 'catFb') catFbSheet();
   else if (a === 'catToggle') { const on = !catOn(); saveSettings({ catalog: { ...(ST().catalog || {}), on, url: catLink() } }).then(ok => { if (!ok) return; logEvent(on ? 'Catalogue on' : 'Catalogue off', 'settings', on ? 'Public catalogue switched on' : 'Public catalogue switched off'); toast(on ? 'The catalogue is on' : 'The catalogue is off'); }); }
   else if (a === 'catCopy') { Promise.resolve().then(() => navigator.clipboard.writeText(catLink())).then(() => toast('Link copied'), () => toast('Could not copy. Press on the link to copy it.')); }
   else if (a === 'bkSheet') backupToSheet(t);
