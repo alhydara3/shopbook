@@ -72,7 +72,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
 .oc{display:flex;flex-wrap:wrap;gap:8px}
 .oc button{font:inherit;font-size:14px;text-align:left;border:1.5px solid var(--line);background:#f3f4f6;color:var(--ink);border-radius:10px;padding:8px 12px;min-height:40px;cursor:pointer;overflow-wrap:anywhere}
 .oc button[aria-pressed=true]{border-color:#c0392b;background:#fdecea;color:#b02a1d;font-weight:700}
-.oc button.alt{opacity:.55}
+.oc button.alt{opacity:.5;color:#8a919c;background:#eceef1;border-style:dashed;cursor:not-allowed}
 .more{font:inherit;font-size:14px;font-weight:700;border:1px solid var(--navy);background:#fff;color:var(--navy);border-radius:10px;padding:6px 10px;min-height:40px;cursor:pointer;width:100%}
 .more:hover{background:#e8edf6}
 .badge{position:absolute;right:8px;bottom:8px;background:rgba(10,18,30,.72);color:#fff;font-size:12px;font-weight:700;border-radius:999px;padding:3px 8px}
@@ -176,7 +176,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
       var vals = P.vs.map(function (v) { return v.ov[k]; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
       return '<div class="oh">' + esc(nm) + '</div><div class="oc">' + vals.map(function (v) {
         var fits = P.vs.some(function (y) { return y.ov[k] === v && y.ov.every(function (o, j) { return j === k || o === cur.ov[j]; }); });
-        return '<button type="button" data-ok="' + k + '" data-ov="' + esc(v) + '" aria-pressed="' + (cur.ov[k] === v) + '"' + (fits ? '' : ' class="alt"') + '>' + esc(v) + '</button>';
+        return '<button type="button" data-ok="' + k + '" data-ov="' + esc(v) + '" aria-pressed="' + (cur.ov[k] === v) + '"' + (fits ? '' : ' class="alt" disabled title="Not available with your other choices"') + '>' + esc(v) + '</button>';
       }).join('') + '</div>';
     }).join('');
   }
@@ -348,7 +348,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
   }
   var shown = [];
   $('out').addEventListener('click', function (e) { var b = e.target.closest('[data-i]'); if (b && shown[+b.getAttribute('data-i')]) openDetails(shown[+b.getAttribute('data-i')]); });
-  $('dlg').addEventListener('click', function (e) { var b = e.target.closest('[data-ok]'); if (!b || !showing || !showing.P) return; pickOpt(showing.P, +b.getAttribute('data-ok'), b.getAttribute('data-ov')); openDetails(showing.P); });
+  $('dlg').addEventListener('click', function (e) { var b = e.target.closest('[data-ok]'); if (!b || b.disabled || !showing || !showing.P) return; pickOpt(showing.P, +b.getAttribute('data-ok'), b.getAttribute('data-ov')); openDetails(showing.P); });
   $('ov').addEventListener('click', function (e) { if (e.target === $('ov') || e.target.closest('#dlgX')) closeDetails(false); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeDetails(false); });
   window.addEventListener('popstate', function () { closeDetails(true); });
