@@ -2814,7 +2814,7 @@ function itemSheet(itemId) {
     let photo = v.photo || '';
     $('#iPhoto', sh).addEventListener('change', async e => { const file = e.target.files[0]; if (!file) return; try { photo = await shrink(file); toast('Photo ready');
       // pre-order store: the same picture, large, is kept as the first catalogue photo (the catalogue then shows the large one, not the small one)
-      if (PO() && HOST() && HOST().photos && cpOk) { try { const big = await bigPhoto(file);
+      if (HOST() && HOST().photos && cpOk) { try { const big = await bigPhoto(file);
         if (hd && cp.length) { cp[0] = big; cpChanged = true; cpDraw(); } else if (cp.length < cpMax()) { cp.unshift(big); hd = true; cpChanged = true; cpDraw(); }
         else toast('The small photo is saved. The large copy needs a free catalogue photo slot: remove one first.', 6000); } catch {} }
     } catch { toast('Could not read that photo.'); } });
@@ -2916,7 +2916,7 @@ function itemSheet(itemId) {
     sh.addEventListener('click', e => { if (e.target.id === 'iDelYes') { if (HOST() && HOST().photos) HOST().photos('save', it.id, []).catch(() => {}); if (HOST() && HOST().video) HOST().video('videoRemove', [it.id]).catch(() => {}); } if (e.target.id === 'iDelYes') write(() => S.db.doc('items/' + it.id).delete(), 'Item deleted').then(ok => { if (ok) { logEvent('Deleted an item', it.id, it.code + ' ' + it.name, it); closeSheet(); } }); });
   });
 }
-const cpMax = () => (PO() ? 5 : 4), VID_SECS = 30, VID_PART = 700000, VID_MAX = 12 * 1024 * 1024;
+const cpMax = () => 5, VID_SECS = 30, VID_PART = 700000, VID_MAX = 12 * 1024 * 1024;
 const mmss = s => { s = Math.round(num(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 const mb = b => (num(b) / 1048576).toFixed(1) + ' MB';
 function vidErr(e) {
