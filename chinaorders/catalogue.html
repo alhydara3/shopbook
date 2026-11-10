@@ -171,7 +171,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
   }
   function pickOpt(P, k, val) {
     var cur = P.vs[P.sel].ov, best = -1, bi = P.sel;
-    P.vs.forEach(function (v, i) { if (v.ov[k] !== val) return; var m = 0; v.ov.forEach(function (o, j) { if (j !== k && o === cur[j]) m++; }); if (m > best) { best = m; bi = i; } });
+    P.vs.forEach(function (v, i) { if (v.ov[k] !== val) return; if (!v.ov.every(function (o, j) { return j >= k || o === cur[j]; })) return; var m = 0; v.ov.forEach(function (o, j) { if (j !== k && o === cur[j]) m++; }); if (m > best) { best = m; bi = i; } });
     P.sel = bi;
   }
   function optBlock(P) {
@@ -179,8 +179,8 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
     return P.on.map(function (nm, k) {
       var vals = P.vs.map(function (v) { return v.ov[k]; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
       return '<div class="oh">' + esc(nm) + '</div><div class="oc">' + vals.map(function (v) {
-        var fits = P.vs.some(function (y) { return y.ov[k] === v && y.ov.every(function (o, j) { return j === k || o === cur.ov[j]; }); });
-        return '<button type="button" data-ok="' + k + '" data-ov="' + esc(v) + '" aria-pressed="' + (cur.ov[k] === v) + '"' + (fits ? '' : ' class="alt" disabled title="Not available with your other choices"') + '>' + esc(v) + '</button>';
+        var fits = P.vs.some(function (y) { return y.ov[k] === v && y.ov.every(function (o, j) { return j >= k || o === cur.ov[j]; }); });
+        return '<button type="button" data-ok="' + k + '" data-ov="' + esc(v) + '" aria-pressed="' + (cur.ov[k] === v) + '"' + (fits ? '' : ' class="alt" disabled title="Not available with your earlier choices"') + '>' + esc(v) + '</button>';
       }).join('') + '</div>';
     }).join('');
   }

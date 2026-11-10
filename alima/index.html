@@ -804,9 +804,9 @@ function vHome() {
   const alerts = [];
   const below = c.sales.filter(s => s.belowLowest);
   if (below.length) alerts.push(['bad', '!', `${below.length} sale${below.length > 1 ? 's' : ''} below the lowest price. Check them in Sell → Recent sales.`]);
-  const neg = PO() ? [] : c.items.filter(r => r.forSale && r.left < 0);
-  if (neg.length) alerts.push(['bad', '!', `More sold than bought for ${neg.map(r => esc(r.code)).join(', ')}. Count the stock and correct the sale or the quantity.`]);
-  const out = PO() ? [] : c.items.filter(r => r.forSale && r.left === 0 && r.qty > 0);
+  const neg = c.items.filter(r => r.forSale && ltd(r) && r.left < 0);
+  if (neg.length) alerts.push(['bad', '!', PO() ? `More ordered than the pieces on offer for ${neg.map(r => esc(r.code)).join(', ')}. Raise the pieces, or cancel an order.` : `More sold than bought for ${neg.map(r => esc(r.code)).join(', ')}. Count the stock and correct the sale or the quantity.`]);
+  const out = c.items.filter(r => r.forSale && r.left === 0 && ltd(r) && r.qty > 0);
   if (out.length) alerts.push(['info', 'i', `Sold out: ${out.map(r => esc(r.name)).join(', ')}.`]);
   if (PO()) poAlerts().forEach(a => alerts.push(a));
   const oldCredit = PO() ? [] : c.sales.filter(s => num(s.total) - num(s.paid) > 0.5 && daysUntil(s.date) <= -14);
@@ -890,9 +890,9 @@ function vSell() {
     ${S.canWrite ? (S.basket ? `<div class="alert info" style="margin-top:12px"><b class="i">i</b><div><b>Basket:</b> each tap adds one piece. When everything is in, tap <b>Check out</b> at the bottom.</div></div>`
       : `<button type="button" class="btn block" style="margin-top:12px" data-act="basketOn">+ Several items for one customer? Start a basket</button>`) : ''}
     <input id="sellQ" type="search" placeholder="Search items (e.g. abaya, belt, 43)" value="${esc(S.sellQ)}" style="margin:12px 0" aria-label="Search items">
-    <div class="items-grid">${its.map(r => `<button type="button" class="card-btn ${r.left <= 0 && !PO() ? 'out' : ''} ${bq[r.id] ? 'inb-on' : ''}" data-act="sale" data-id="${esc(r.id)}" ${S.canWrite ? '' : 'disabled'}>
+    <div class="items-grid">${its.map(r => `<button type="button" class="card-btn ${soldOut(r) ? 'out' : ''} ${bq[r.id] ? 'inb-on' : ''}" data-act="sale" data-id="${esc(r.id)}" ${S.canWrite && !soldOut(r) ? '' : 'disabled'}${soldOut(r) ? ' aria-label="Sold out"' : ''}>
       ${bq[r.id] ? `<span class="inb">${bq[r.id]} in basket</span>` : ''}${r.photo ? `<img src="${esc(r.photo)}" alt="" loading="lazy">` : `<span class="ph">${esc(r.code)}</span>`}
-      <span class="n">${esc(r.name)}</span><span class="small"><b style="color:var(--target)">${D(r.used)}</b> · <span class="muted">${PO() ? (itSea(r) ? 'order · by sea' : 'order') : r.left + ' left'}</span></span></button>`).join('') || '<div class="empty">No items match.</div>'}</div>
+      <span class="n">${esc(r.name)}</span><span class="small"><b style="color:var(--target)">${D(r.used)}</b> · <span class="muted">${soldOut(r) ? '<b>Sold out</b>' : PO() ? (itSea(r) ? 'order · by sea' : 'order') : r.left + ' left'}</span></span></button>`).join('') || '<div class="empty">No items match.</div>'}</div>
   </div>
   <div class="panel"><div class="spread"><h2>Recent sales</h2>${c.sales.length ? `<span class="muted small">${rq ? `${found.length} found` : `${recent.length} of ${c.sales.length}`}</span>` : ''}</div>
     ${c.sales.length ? `<input id="recentQ" type="search" placeholder="Find a sale: name, phone or receipt no." value="${esc(S.recentQ)}" style="margin:12px 0 0" aria-label="Find a sale">` : ''}
@@ -934,7 +934,7 @@ function vStock() {
       <div class="row" style="flex-wrap:nowrap;align-items:flex-start">${img(r)}<div style="min-width:0"><div class="n">${esc(r.name)}</div><div class="small muted">${esc(r.code)} · ${esc(r.group)}</div></div></div>
       ${r.forSale ? priceTrio(r) : '<span class="pill">Shop equipment — not for sale</span>'}
       ${r.forSale ? `<div class="small"><div class="spread"><span>${PO() ? `<b>${r.sold}</b> ordered by buyers` : `<b>${r.left}</b> left of ${r.qty}`}</span><span class="muted">${P(r.thru)} sold</span></div><div class="bar" style="margin-top:4px"><i style="width:${Math.min(100, r.thru * 100)}%"></i></div></div>` : ''}
-      ${num(r.finalPrice) > 0 ? `<span class="pill warn">Own price ${D(r.finalPrice)} used</span>` : ''}${r.left < 0 && !PO() ? '<span class="pill bad">More sold than bought</span>' : ''}${r.adj ? `<span class="pill warn">Stock changes ${r.adj > 0 ? '+' : ''}${r.adj}</span>` : ''}${r.lowAbove ? '<span class="pill bad">Lowest is above target</span>' : ''}${r.mkSrc === 'item' && r.forSale ? `<span class="pill">Markup ${P(r.mk)} (this item)</span>` : ''}${r.flSrc === 'item' && r.forSale ? `<span class="pill">Lowest +${P(r.fl)} (this item)</span>` : ''}${r.noMk ? `<span class="pill bad">No markup for "${esc(r.group)}": using 40%</span>` : ''}
+      ${num(r.finalPrice) > 0 ? `<span class="pill warn">Own price ${D(r.finalPrice)} used</span>` : ''}${r.left < 0 && ltd(r) ? `<span class="pill bad">${PO() ? 'More ordered than on offer' : 'More sold than bought'}</span>` : ''}${r.adj ? `<span class="pill warn">Stock changes ${r.adj > 0 ? '+' : ''}${r.adj}</span>` : ''}${r.lowAbove ? '<span class="pill bad">Lowest is above target</span>' : ''}${r.mkSrc === 'item' && r.forSale ? `<span class="pill">Markup ${P(r.mk)} (this item)</span>` : ''}${r.flSrc === 'item' && r.forSale ? `<span class="pill">Lowest +${P(r.fl)} (this item)</span>` : ''}${r.noMk ? `<span class="pill bad">No markup for "${esc(r.group)}": using 40%</span>` : ''}
     </button>`).join('') || '<div class="panel empty">No items match.</div>'}</div>`}
   ${S.selMode && OWN() && !S.insights && !S.priceCard ? selBar() : ''}
   </section>`;
@@ -1140,7 +1140,7 @@ function saleSheet(itemId, saleId) {
       if (d >= q * p) return toast('The discount is bigger than the price.');
       // never more than the stock shows (an edit may keep or lower its own pieces)
       const inStock = r.left + (ex ? num(ex.qty) : 0);
-      if (!PO() && q > inStock && !(ex && q <= num(ex.qty))) return toast(inStock > 0 ? `Only ${inStock} in stock. If you really have more, ask the owner to correct the stock.` : `${r.name} is sold out. If you really have more, ask the owner to correct the stock.`, 6000);
+      if (ltd(r) && q > inStock && !(ex && q <= num(ex.qty))) return toast(PO() ? (inStock > 0 ? `Only ${inStock} of ${r.name} can still be ordered. The owner can raise the pieces if more can be bought.` : `${r.name} is sold out. The owner can raise the pieces if more can be bought.`) : inStock > 0 ? `Only ${inStock} in stock. If you really have more, ask the owner to correct the stock.` : `${r.name} is sold out. If you really have more, ask the owner to correct the stock.`, 6000);
       const name = $('#sCust', sh).value.trim(), phone = $('#sPhone', sh).value.trim();
       if (PO() && !name) return toast('Write the buyer\'s name: it is needed to hand over the order.');
       if (ps.mode === 'Credit' && !name) return toast('Write the customer name for a credit sale.');
@@ -1875,7 +1875,7 @@ function catalogPanel() {
 function catalogBody() {
   const items = [];
   S.ships.filter(sh => (PO() ? sh.status !== 'Closed' : sh.status === 'Selling') && !/sample shipment \(for testing\)/i.test(sh.name || '')).forEach(sh => {
-    calcShip(sh).items.filter(r => r.forSale && (r.left > 0 || PO()) && r.catHide !== true).forEach(r => items.push({ id: r.id, code: String(r.code || ''), name: String(r.name || ''), group: String(r.group || ''), sizes: String(r.sizes || ''), price: num(r.target), left: num(r.left) }));
+    calcShip(sh).items.filter(r => r.forSale && !soldOut(r) && r.catHide !== true).forEach(r => items.push({ id: r.id, code: String(r.code || ''), name: String(r.name || ''), group: String(r.group || ''), sizes: String(r.sizes || ''), price: num(r.target), left: num(r.left) }));
   });
   items.sort((a, b) => a.group.localeCompare(b.group) || a.code.localeCompare(b.code));
   const st = ST();
@@ -2120,6 +2120,9 @@ function monthSheet(ym) {
 }
 
 /* Basket: several items for one customer */
+/* Sold out: a shop with stock can never sell more than it has. An order store limits an item only when it has pieces to offer set (0 = no limit). */
+const ltd = r => !PO() || num(r.qty) > 0;
+const soldOut = r => !!(r && r.forSale && ltd(r) && r.left <= 0);
 function itemRow(itemId) {
   const it = S.items.find(i => i.id === itemId); if (!it) return null;
   const sh = S.ships.find(s => s.id === it.ship); if (!sh) return null;
@@ -2129,7 +2132,7 @@ function basketTotals() { const B = S.basket || []; return { pieces: sum(B, l =>
 function basketAdd(id) {
   const r = itemRow(id); if (!r) return toast('That item was not found.');
   const ln = S.basket.find(l => l.itemId === id); const have = ln ? num(ln.qty) : 0;
-  if (!PO() && have + 1 > r.left) return toast(r.left > 0 ? `Only ${r.left} ${r.name} in stock.` : `${r.name} is sold out.`);
+  if (ltd(r) && have + 1 > r.left) return toast(r.left > 0 ? `Only ${r.left} ${r.name} ${PO() ? 'can still be ordered' : 'in stock'}.` : `${r.name} is sold out.`);
   if (ln) ln.qty = have + 1; else S.basket.push({ itemId: id, qty: 1, price: r.used, size: '' });
   render();
 }
@@ -2195,7 +2198,7 @@ function basketSheet() {
     sh.addEventListener('click', e => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.dataset.bstep) { const l = B[+b.dataset.i]; const r = itemRow(l.itemId); const nq = Math.max(1, num(l.qty) + num(b.dataset.bstep));
-        if (r && !PO() && nq > r.left) { toast(`Only ${r.left} ${r.name} in stock.`); return; } l.qty = nq; $(`[data-bq="${b.dataset.i}"]`, sh).value = nq; pc.upd(); schedule(); }
+        if (r && ltd(r) && nq > r.left) { toast(`Only ${r.left} ${r.name} ${PO() ? 'can still be ordered' : 'in stock'}.`); return; } l.qty = nq; $(`[data-bq="${b.dataset.i}"]`, sh).value = nq; pc.upd(); schedule(); }
       else if (b.dataset.brm != null) { B.splice(+b.dataset.brm, 1); if (!B.length) { closeSheet(); render(); toast('Basket is empty.'); return; } redraw(); }
       else if (b.id === 'bMore') { closeSheet(); render(); toast('Tap the next item to add it.'); }
       else if (b.closest('#bVia')) { f.channel = b.dataset.v; $$('#bVia button', sh).forEach(x => x.setAttribute('aria-pressed', x === b)); }
@@ -2222,7 +2225,7 @@ function basketSheet() {
       for (const { l, r } of lines) {
         if (num(l.qty) < 1) return toast(`Enter how many ${r.name} were sold.`);
         if (num(l.price) <= 0) return toast(`Enter the price for ${r.name}.`);
-        if (!PO() && num(l.qty) > r.left) return toast(`Only ${r.left} ${r.name} in stock.`);
+        if (ltd(r) && num(l.qty) > r.left) return toast(`Only ${r.left} ${r.name} ${PO() ? 'can still be ordered' : 'in stock'}.`);
       }
       if (disc() >= gross()) return toast('The discount is bigger than the total.');
       if (PO() && !String(f.customer).trim()) return toast('Write the buyer\'s name: it is needed to hand over the order.');
@@ -2319,7 +2322,7 @@ async function pullFormUrl(id) {
 }
 function formItemRows() {
   const rows = [], byCode = {};
-  S.ships.forEach(sh => calcShip(sh).items.forEach(r => { if (r.forSale && (r.left > 0 || PO())) { rows.push({ r, sh }); byCode[r.code] = (byCode[r.code] || 0) + 1; } }));
+  S.ships.forEach(sh => calcShip(sh).items.forEach(r => { if (r.forSale && !soldOut(r)) { rows.push({ r, sh }); byCode[r.code] = (byCode[r.code] || 0) + 1; } }));
   return rows.map(({ r, sh }) => [r.code + ' · ' + r.name + ' (D' + Math.round(r.target).toLocaleString('en-US') + ')' + (byCode[r.code] > 1 ? ' · ' + String(sh.name || '').split(/ [—-] /)[0].trim() : ''), r.id, Math.round(r.target)]);
 }
 function formSetupSheet() {
@@ -2404,10 +2407,10 @@ function formImportSheet() {
     if (!fresh.length) { body.innerHTML = `<p style="margin:0"><b>No new form sales.</b></p><p class="note" style="margin:0">${subs.length ? `All ${subs.length} form entries are already in the Shop Book.` : 'The form has no answers yet.'}</p>`; return; }
     // a form sale that needs more pieces than the stock shows is held back (whole sale), in the order the sales were sent
     const leftNow = () => { const m = {}; S.ships.forEach(x => calcShip(x).items.forEach(r => { m[r.id] = r.left; })); return m; };
-    const holdCheck = list => { const m = leftNow(), out = new Map(); if (PO()) return out;
+    const holdCheck = list => { const m = leftNow(), out = new Map(), lim = id => { const r = itemRow(id); return !!(r && ltd(r)); };
       list.forEach(s => { if (s.errors.length) return; const need = {};
         s.lines.filter(l => !l.done && l.r).forEach(l => { need[l.r.id] = (need[l.r.id] || 0) + l.qty; });
-        const short = Object.keys(need).filter(id => need[id] > (m[id] || 0));
+        const short = Object.keys(need).filter(id => lim(id) && need[id] > (m[id] || 0));
         if (short.length) out.set(s, short.map(id => { const l = s.lines.find(x => x.r && x.r.id === id); return `Only ${Math.max(0, m[id] || 0)} ${l.r.name} in stock; this sale needs ${need[id]}.`; }));
         else Object.keys(need).forEach(id => { m[id] -= need[id]; }); });
       return out; };
@@ -2652,7 +2655,7 @@ function productSheet(fam, seedId) {
     prefix: first ? (seed ? String(first.code) : String(first.code).replace(/-\d+$/, '')) : '', photo: first ? famPhoto(first) : '',
     dep: first && first.poDep != null && num(first.poDep) > 0 ? Math.round(num(first.poDep) * 100) : '', when: first ? (first.poWhen || '') : '', sea: !!(first && first.bySea),
     opts: names.map((n, k) => ({ name: n, text: [...new Set(members.map(m => (m.opts || [])[k]).filter(Boolean))].join('\n') })),
-    rows: (members.length ? members : seed ? [seed] : []).map(m => ({ id: m.id, code: m.code, vals: names.map((_, k) => (m.opts || [])[k] || ''), rmb: m.rmb || '', qty: m.qty == null ? 1 : m.qty, mode: m.shipMode || '', kg: m.kg || '', cbm: m.cbm || '', od: m.optDesc || '', photo: m.id === (first && first.id) ? '' : (raw(m.id).photo || '') })),
+    rows: (members.length ? members : seed ? [seed] : []).map(m => ({ id: m.id, code: m.code, vals: names.map((_, k) => (m.opts || [])[k] || ''), rmb: m.rmb || '', qty: m.qty == null ? (PO() ? 0 : 1) : m.qty, mode: m.shipMode || '', kg: m.kg || '', cbm: m.cbm || '', od: m.optDesc || '', photo: m.id === (first && first.id) ? '' : (raw(m.id).photo || '') })),
     removed: [] };
   const vals = k => String((P.opts[k] || {}).text || '').split('\n').map(s => s.trim()).filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
   const label = r => r.vals.filter(Boolean).join(' / ') || 'Choose the options';
@@ -2674,7 +2677,7 @@ function productSheet(fam, seedId) {
     <div class="panel"><h3>Your combinations (${P.rows.length}${P.rows.length >= OPT_MAX ? ', the most allowed' : ''})</h3>
       ${P.rows.map((r, i) => `<div class="f cpbox" data-row="${i}"><div class="spread"><b>${esc(label(r))}</b><button type="button" data-rm="${i}" aria-label="Remove this combination">×</button></div>
         ${P.opts.map((o, k) => `<label class="f">${esc(o.name || 'Option ' + (k + 1))}<select data-rv="${i}" data-k="${k}"><option value="">Choose…</option>${vals(k).map(v => `<option${v === r.vals[k] ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>`).join('')}
-        <div class="fgrid"><label class="f">China price (RMB)<input data-rf="rmb" data-i="${i}" inputmode="decimal" value="${esc(r.rmb)}"></label><label class="f">Pieces<input data-rf="qty" data-i="${i}" inputmode="numeric" value="${esc(r.qty)}"></label></div>
+        <div class="fgrid"><label class="f">China price (RMB)<input data-rf="rmb" data-i="${i}" inputmode="decimal" value="${esc(r.rmb)}"></label><label class="f">${PO() ? 'Pieces on offer (0 = no limit)' : 'Pieces'}<input data-rf="qty" data-i="${i}" inputmode="numeric" value="${esc(r.qty)}"></label></div>
         <div class="fgrid" style="grid-template-columns:repeat(3,1fr)"><label class="f">Shipped by<select data-rf="mode" data-i="${i}"><option value="">Not set</option><option value="air"${r.mode === 'air' ? ' selected' : ''}>Air</option><option value="sea"${r.mode === 'sea' ? ' selected' : ''}>Sea</option></select></label><label class="f">kg<input data-rf="kg" data-i="${i}" inputmode="decimal" value="${esc(r.kg)}"></label><label class="f">CBM<input data-rf="cbm" data-i="${i}" inputmode="decimal" value="${esc(r.cbm)}"></label></div>
         <label class="f">Specs of this option <span class="h">shown in the catalogue, optional (up to 1000 letters)</span><textarea data-rf="od" data-i="${i}" rows="3" maxlength="1000">${esc(r.od)}</textarea></label>
         ${i > 0 ? `<label class="f">Photo of this option <span class="h">optional; empty = the product's photo</span><input type="file" accept="image/*" data-rp="${i}"></label>${r.photo ? `<div class="row"><img class="thumb" src="${esc(r.photo)}" alt=""><button type="button" class="btn" data-rpx="${i}">Remove photo</button></div>` : ''}` : ''}</div>`).join('') || '<p class="note">Add an option above and tap Make the combinations.</p>'}</div>
@@ -2705,7 +2708,7 @@ function productSheet(fam, seedId) {
         // an old row that has no choices yet (a plain item turned into a product) takes the first new combination
         if (P.rows.length + add.length > OPT_MAX) return toast(`That makes ${P.rows.length + add.length} combinations. The most is ${OPT_MAX}: use fewer choices, or add the combinations by hand later.`, 7000);
         const ph = P.rows.find(r => r.vals.every(v => !v)); if (ph && add.length) ph.vals = add.shift();
-        add.forEach(cb => P.rows.push({ id: '', code: '', vals: cb, rmb: '', qty: 1, mode: '', kg: '', cbm: '', od: '', photo: '' })); redraw(); }
+        add.forEach(cb => P.rows.push({ id: '', code: '', vals: cb, rmb: '', qty: PO() ? 0 : 1, mode: '', kg: '', cbm: '', od: '', photo: '' })); redraw(); }
     });
     body.addEventListener('submit', async e => {
       e.preventDefault();
@@ -2770,7 +2773,7 @@ function itemSheet(itemId) {
         <label class="row" style="flex-wrap:nowrap"><input type="checkbox" id="iFull" style="width:22px;min-height:22px" ${isFull(itDepOwn(v)) ? 'checked' : ''}> Full payment (no deposit): buyers pay the whole price when they order</label>
         <label class="row" style="flex-wrap:nowrap"><input type="checkbox" id="iSea" style="width:22px;min-height:22px" ${itSea(v) ? 'checked' : ''}> Show the label "${esc(SEA_LABEL)}" (big or heavy products)</label></div>` : ''}
       <div class="fgrid" id="iNewG" hidden><label class="f">New group name<input id="iNgName" placeholder="e.g. Watches"></label><label class="f">Markup for this group (%)<input id="iNgMk" inputmode="decimal" value="${Math.round((num(st.defaultMarkup) || 0.45) * 100)}"></label></div>
-      <div class="fgrid"><label class="f">Pieces bought<input id="iQty" inputmode="numeric" value="${esc(v.qty)}"></label><label class="f">China price per piece (RMB)<input id="iRmb" inputmode="decimal" value="${esc(v.rmb)}"></label></div>
+      <div class="fgrid"><label class="f">${PO() ? 'Pieces on offer' : 'Pieces bought'}<input id="iQty" inputmode="numeric" value="${esc(v.qty)}">${PO() ? '<span class="h">0 = no limit. When all are ordered it shows as sold out and leaves the catalogue.</span>' : ''}</label><label class="f">China price per piece (RMB)<input id="iRmb" inputmode="decimal" value="${esc(v.rmb)}"></label></div>
       <div class="fgrid"><label class="f">Market price seen (D) <span class="h">optional</span><input id="iMkt" inputmode="decimal" value="${esc(v.market || '')}"></label>
         <label class="f">Own selling price (D) <span class="h">optional, replaces target (ask = this + bargaining room)</span><input id="iFinal" inputmode="decimal" value="${esc(v.finalPrice || '')}"></label></div>
       <label class="f">Markup (%) <span class="h">optional, only for this item; empty = use the group's ${P(grpMk(v.group))}</span><input id="iMk" inputmode="decimal" value="${hasPct(v.markupPct) ? +(num(v.markupPct) * 100).toFixed(2) : ''}" placeholder="${Math.round(grpMk(v.group) * 100)}"></label>
