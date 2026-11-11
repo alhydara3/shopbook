@@ -696,13 +696,19 @@ function calcCore(ship, items, sales, shipExp, adjs, mkOver) {
     const noMk = forSale && !ownMk && !(i.group in MK); const mk = ownMk ? num(i.markupPct) : (MK[i.group] ?? 0.4);
     const mkTarget = forSale ? ceilTo(landed * (1 + mk), step) : 0;
     const ownPrice = forSale && num(i.finalPrice) > 0 ? num(i.finalPrice) : 0;   // "Own selling price" replaces the target, and the ask follows it
-    const target = ownPrice || mkTarget;
-    const ask = forSale ? ceilTo(target * (1 + num(st.bargain)), step) : 0;
+    const regular = ownPrice || mkTarget;
+    /* promotion: a lower price between two dates (optional start, required last day); it starts and stops by itself.
+       During it the target is the promo price and the ask is the promo price too (no bargaining room). */
+    const t0 = today(), pp = forSale ? num(i.promoPrice) : 0, pT = String(i.promoTo || ''), pF = String(i.promoFrom || '');
+    const promoState = pp > 0 && /^\d{4}-\d{2}-\d{2}$/.test(pT) && t0 <= pT ? (pF && t0 < pF ? 'soon' : 'on') : '';
+    const promoOn = promoState === 'on' && pp < regular;
+    const target = promoOn ? pp : regular;
+    const ask = forSale ? (promoOn ? target : ceilTo(target * (1 + num(st.bargain)), step)) : 0;
     const [fl, flSrc] = floorFor(i, st);
     const lowest = forSale ? ceilTo(own * (1 + fl), fstep) : 0;
     const used = target;
     const sold = soldBy[i.id] || 0, qty = num(i.qty), adj = adjBy[i.id] || 0;
-    return { ...i, forSale, own, landed, cogsUnit: !forSale ? 0 : manLanded ? num(i.landedManual) : num(i.rmb) * costMult + dL, cogsOwn: manOwn ? num(i.ownManual) : num(i.rmb) * ownMult + dO, calcOwn, calcLanded, manOwn, manLanded, frt: frtOf(i), mk, mkSrc, mkTarget, noMk, fl, flSrc, lowAbove: forSale && lowest > target, target, ask, lowest, used, sold, adj, left: qty - sold + adj, qty,
+    return { ...i, forSale, own, landed, cogsUnit: !forSale ? 0 : manLanded ? num(i.landedManual) : num(i.rmb) * costMult + dL, cogsOwn: manOwn ? num(i.ownManual) : num(i.rmb) * ownMult + dO, calcOwn, calcLanded, manOwn, manLanded, frt: frtOf(i), mk, mkSrc, mkTarget, noMk, fl, flSrc, lowAbove: forSale && lowest > regular, promoLow: promoOn && lowest > target, regular, promoOn, promoState, target, ask, lowest, used, sold, adj, left: qty - sold + adj, qty,
       thru: forSale && qty > 0 ? sold / qty : 0, revenue: revBy[i.id] || 0 };
   }).sort((a, b) => String(a.code).localeCompare(String(b.code)));
   const expenses = sum(shipExp, e => num(e.amount));
@@ -885,14 +891,14 @@ function vSell() {
   const bq = {}; (S.basket || []).forEach(l => { bq[l.itemId] = (bq[l.itemId] || 0) + num(l.qty); });
   const bTot = basketTotals();
   return `<section class="screen">
-  ${PO() ? ordersPanel() : ''}
+  ${PO() ? winBanner() + ordersPanel() : ''}
   <div class="panel"><div class="spread"><h2>${PO() ? 'Take an order' : 'Record a sale'}</h2><span class="muted small">${S.basket ? 'Tap each item the customer is buying' : 'Tap the item that was sold'}</span></div>
     ${S.canWrite ? (S.basket ? `<div class="alert info" style="margin-top:12px"><b class="i">i</b><div><b>Basket:</b> each tap adds one piece. When everything is in, tap <b>Check out</b> at the bottom.</div></div>`
       : `<button type="button" class="btn block" style="margin-top:12px" data-act="basketOn">+ Several items for one customer? Start a basket</button>`) : ''}
     <input id="sellQ" type="search" placeholder="Search items (e.g. abaya, belt, 43)" value="${esc(S.sellQ)}" style="margin:12px 0" aria-label="Search items">
-    <div class="items-grid">${its.map(r => `<button type="button" class="card-btn ${soldOut(r) ? 'out' : ''} ${bq[r.id] ? 'inb-on' : ''}" data-act="sale" data-id="${esc(r.id)}" ${S.canWrite && !soldOut(r) ? '' : 'disabled'}${soldOut(r) ? ' aria-label="Sold out"' : ''}>
+    <div class="items-grid">${its.map(r => `<button type="button" class="card-btn ${soldOut(r) || winBlock(r) ? 'out' : ''} ${bq[r.id] ? 'inb-on' : ''}" data-act="sale" data-id="${esc(r.id)}" ${S.canWrite && !soldOut(r) && !winBlock(r) ? '' : 'disabled'}${soldOut(r) ? ' aria-label="Sold out"' : ''}>
       ${bq[r.id] ? `<span class="inb">${bq[r.id]} in basket</span>` : ''}${r.photo ? `<img src="${esc(r.photo)}" alt="" loading="lazy">` : `<span class="ph">${esc(r.code)}</span>`}
-      <span class="n">${esc(r.name)}</span><span class="small"><b style="color:var(--target)">${D(r.used)}</b> · <span class="muted">${soldOut(r) ? '<b>Sold out</b>' : PO() ? (itSea(r) ? 'order · by sea' : 'order') : r.left + ' left'}</span></span></button>`).join('') || '<div class="empty">No items match.</div>'}</div>
+      <span class="n">${esc(r.name)}</span><span class="small"><b style="color:var(--target)">${D(r.used)}</b>${r.promoOn ? ` <s class="muted">${D(r.regular)}</s>` : ''} · <span class="muted">${soldOut(r) ? '<b>Sold out</b>' : winState(r) === 'closed' ? '<b>Window closed</b>' : winState(r) === 'soon' ? '<b>Not open yet</b>' : PO() ? (itSea(r) ? 'order · by sea' : 'order') : r.left + ' left'}</span></span></button>`).join('') || '<div class="empty">No items match.</div>'}</div>
   </div>
   <div class="panel"><div class="spread"><h2>Recent sales</h2>${c.sales.length ? `<span class="muted small">${rq ? `${found.length} found` : `${recent.length} of ${c.sales.length}`}</span>` : ''}</div>
     ${c.sales.length ? `<input id="recentQ" type="search" placeholder="Find a sale: name, phone or receipt no." value="${esc(S.recentQ)}" style="margin:12px 0 0" aria-label="Find a sale">` : ''}
@@ -934,7 +940,7 @@ function vStock() {
       <div class="row" style="flex-wrap:nowrap;align-items:flex-start">${img(r)}<div style="min-width:0"><div class="n">${esc(r.name)}</div><div class="small muted">${esc(r.code)} · ${esc(r.group)}</div></div></div>
       ${r.forSale ? priceTrio(r) : '<span class="pill">Shop equipment — not for sale</span>'}
       ${r.forSale ? `<div class="small"><div class="spread"><span>${PO() ? `<b>${r.sold}</b> ordered by buyers` : `<b>${r.left}</b> left of ${r.qty}`}</span><span class="muted">${P(r.thru)} sold</span></div><div class="bar" style="margin-top:4px"><i style="width:${Math.min(100, r.thru * 100)}%"></i></div></div>` : ''}
-      ${num(r.finalPrice) > 0 ? `<span class="pill warn">Own price ${D(r.finalPrice)} used</span>` : ''}${r.left < 0 && ltd(r) ? `<span class="pill bad">${PO() ? 'More ordered than on offer' : 'More sold than bought'}</span>` : ''}${r.adj ? `<span class="pill warn">Stock changes ${r.adj > 0 ? '+' : ''}${r.adj}</span>` : ''}${r.lowAbove ? '<span class="pill bad">Lowest is above target</span>' : ''}${r.mkSrc === 'item' && r.forSale ? `<span class="pill">Markup ${P(r.mk)} (this item)</span>` : ''}${r.flSrc === 'item' && r.forSale ? `<span class="pill">Lowest +${P(r.fl)} (this item)</span>` : ''}${r.noMk ? `<span class="pill bad">No markup for "${esc(r.group)}": using 40%</span>` : ''}
+      ${num(r.finalPrice) > 0 ? `<span class="pill warn">Own price ${D(r.finalPrice)} used</span>` : ''}${r.promoOn ? `<span class="pill ok">Promo ${D(r.target)} until ${short(r.promoTo)}</span>` : r.promoState === 'soon' ? `<span class="pill">Promo from ${short(r.promoFrom)}</span>` : ''}${r.promoLow ? '<span class="pill bad">Promo is below the lowest price</span>' : ''}${r.left < 0 && ltd(r) ? `<span class="pill bad">${PO() ? 'More ordered than on offer' : 'More sold than bought'}</span>` : ''}${r.adj ? `<span class="pill warn">Stock changes ${r.adj > 0 ? '+' : ''}${r.adj}</span>` : ''}${r.lowAbove ? '<span class="pill bad">Lowest is above target</span>' : ''}${r.mkSrc === 'item' && r.forSale ? `<span class="pill">Markup ${P(r.mk)} (this item)</span>` : ''}${r.flSrc === 'item' && r.forSale ? `<span class="pill">Lowest +${P(r.fl)} (this item)</span>` : ''}${r.noMk ? `<span class="pill bad">No markup for "${esc(r.group)}": using 40%</span>` : ''}
     </button>`).join('') || '<div class="panel empty">No items match.</div>'}</div>`}
   ${S.selMode && OWN() && !S.insights && !S.priceCard ? selBar() : ''}
   </section>`;
@@ -1138,6 +1144,7 @@ function saleSheet(itemId, saleId) {
       if (q < 1) return toast('Enter how many pieces were sold.');
       if (p <= 0) return toast('Enter the price per piece.');
       if (d >= q * p) return toast('The discount is bigger than the price.');
+      if (!ex && winBlock(r)) return toast(winMsg(r));
       // never more than the stock shows (an edit may keep or lower its own pieces)
       const inStock = r.left + (ex ? num(ex.qty) : 0);
       if (ltd(r) && q > inStock && !(ex && q <= num(ex.qty))) return toast(PO() ? (inStock > 0 ? `Only ${inStock} of ${r.name} can still be ordered. The owner can raise the pieces if more can be bought.` : `${r.name} is sold out. The owner can raise the pieces if more can be bought.`) : inStock > 0 ? `Only ${inStock} in stock. If you really have more, ask the owner to correct the stock.` : `${r.name} is sold out. If you really have more, ask the owner to correct the stock.`, 6000);
@@ -1875,7 +1882,7 @@ function catalogPanel() {
 function catalogBody() {
   const items = [];
   S.ships.filter(sh => (PO() ? sh.status !== 'Closed' : sh.status === 'Selling') && !/sample shipment \(for testing\)/i.test(sh.name || '')).forEach(sh => {
-    calcShip(sh).items.filter(r => r.forSale && !soldOut(r) && r.catHide !== true).forEach(r => items.push({ id: r.id, code: String(r.code || ''), name: String(r.name || ''), group: String(r.group || ''), sizes: String(r.sizes || ''), price: num(r.target), left: num(r.left) }));
+    calcShip(sh).items.filter(r => r.forSale && !soldOut(r) && r.catHide !== true).forEach(r => items.push({ id: r.id, code: String(r.code || ''), name: String(r.name || ''), group: String(r.group || ''), sizes: String(r.sizes || ''), price: num(r.regular != null ? r.regular : r.target), left: num(r.left), ...(PO() && num(r.ordMin) > 0 ? { ord: Math.max(0, Math.round(orderedQty(r.id))) } : {}) }));
   });
   items.sort((a, b) => a.group.localeCompare(b.group) || a.code.localeCompare(b.code));
   const st = ST();
@@ -2123,6 +2130,19 @@ function monthSheet(ym) {
 /* Sold out: a shop with stock can never sell more than it has. An order store limits an item only when it has pieces to offer set (0 = no limit). */
 const ltd = r => !PO() || num(r.qty) > 0;
 const soldOut = r => !!(r && r.forSale && ltd(r) && r.left <= 0);
+/* group-order window (order stores): the shipment's "Opens" and "Last day". Outside it a seller cannot take an order; the owner can (and sees why). */
+const winState = r => { const sh = r && S.ships.find(x => x.id === r.ship); if (!PO() || !sh) return ''; const f = String(sh.ordFrom || ''), e = String(sh.ordTo || ''), n = today();
+  if (!f && !e) return ''; if (f && n < f) return 'soon'; if (e && n > e) return 'closed'; return 'open'; };
+const winBlock = r => { const w = winState(r); return (w === 'soon' || w === 'closed') && !OWN(); };
+const winMsg = r => { const sh = S.ships.find(x => x.id === r.ship) || {}, w = winState(r);
+  return w === 'soon' ? `Orders for ${r.name} open on ${short(sh.ordFrom)}.` : `The order window for ${r.name} closed on ${short(sh.ordTo)}. Ask the owner.`; };
+const orderedQty = id => sum(S.sales.filter(s => s.itemId === id), s => num(s.qty) - sum(s.returns || [], x => num(x.qty)));
+const winBanner = () => { const sh = curShip(); if (!PO() || !sh || !(sh.ordFrom || sh.ordTo)) return ''; const w = winState({ ship: sh.id }), lab = String(sh.ordLabel || '').trim();
+  const left = sh.ordTo ? Math.round((Date.parse(sh.ordTo + 'T00:00:00Z') - Date.parse(today() + 'T00:00:00Z')) / 864e5) : null;
+  const txt = w === 'soon' ? `opens on ${short(sh.ordFrom)}. Orders cannot be taken yet${OWN() ? ' (you, the owner, still can)' : ''}.`
+    : w === 'closed' ? `closed on ${short(sh.ordTo)}. ${OWN() ? 'You, the owner, can still take an order.' : 'Orders cannot be taken. Ask the owner.'}`
+    : `open${sh.ordTo ? ` until ${short(sh.ordTo)}${left <= 0 ? ' (last day)' : left === 1 ? ' (1 day left)' : ` (${left} days left)`}` : ''}.`;
+  return `<div class="alert ${w === 'open' ? 'info' : 'warn'}" style="margin-bottom:12px"><b class="i">i</b><div><b>${esc(lab || 'Order window')}:</b> ${txt}</div></div>`; };
 function itemRow(itemId) {
   const it = S.items.find(i => i.id === itemId); if (!it) return null;
   const sh = S.ships.find(s => s.id === it.ship); if (!sh) return null;
@@ -2132,6 +2152,7 @@ function basketTotals() { const B = S.basket || []; return { pieces: sum(B, l =>
 function basketAdd(id) {
   const r = itemRow(id); if (!r) return toast('That item was not found.');
   const ln = S.basket.find(l => l.itemId === id); const have = ln ? num(ln.qty) : 0;
+  if (winBlock(r)) return toast(winMsg(r));
   if (ltd(r) && have + 1 > r.left) return toast(r.left > 0 ? `Only ${r.left} ${r.name} ${PO() ? 'can still be ordered' : 'in stock'}.` : `${r.name} is sold out.`);
   if (ln) ln.qty = have + 1; else S.basket.push({ itemId: id, qty: 1, price: r.used, size: '' });
   render();
@@ -2225,6 +2246,7 @@ function basketSheet() {
       for (const { l, r } of lines) {
         if (num(l.qty) < 1) return toast(`Enter how many ${r.name} were sold.`);
         if (num(l.price) <= 0) return toast(`Enter the price for ${r.name}.`);
+        if (winBlock(r)) return toast(winMsg(r));
         if (ltd(r) && num(l.qty) > r.left) return toast(`Only ${r.left} ${r.name} ${PO() ? 'can still be ordered' : 'in stock'}.`);
       }
       if (disc() >= gross()) return toast('The discount is bigger than the total.');
@@ -2770,12 +2792,17 @@ function itemSheet(itemId) {
       ${PO() ? `<div class="f cpbox"><b>Ordering this product</b><span class="h">optional, only for this product; empty = the store's ${isFull(PO_DEP()) ? 'full payment' : `deposit (${P(PO_DEP())})`} and arrival time (${esc(PO_WHEN() ? 'about ' + PO_WHEN() : 'not set')}). Shown in Take an order, on receipts and in the public catalogue.</span>
         <div class="fgrid"><label class="f">Deposit (%)<input id="iDep" inputmode="numeric" maxlength="4" value="${itDepOwn(v) && !isFull(itDepOwn(v)) ? Math.round(itDepOwn(v) * 100) : ''}" placeholder="${isFull(PO_DEP()) ? 'full' : Math.round(PO_DEP() * 100)}" ${isFull(itDepOwn(v)) ? 'disabled' : ''}></label>
           <label class="f">Arrives in about<input id="iWhen" maxlength="40" value="${esc(itWhenOwn(v))}" placeholder="${esc(PO_WHEN() || 'e.g. 10 to 12 weeks')}"></label></div>
+        <label class="f">Minimum pieces to order from China <span class="h">optional target. The catalogue shows how many are ordered so far. If it is not reached you can still order what you have.</span><input id="iMin" inputmode="numeric" value="${num(v.ordMin) > 0 ? esc(v.ordMin) : ''}"></label>
         <label class="row" style="flex-wrap:nowrap"><input type="checkbox" id="iFull" style="width:22px;min-height:22px" ${isFull(itDepOwn(v)) ? 'checked' : ''}> Full payment (no deposit): buyers pay the whole price when they order</label>
         <label class="row" style="flex-wrap:nowrap"><input type="checkbox" id="iSea" style="width:22px;min-height:22px" ${itSea(v) ? 'checked' : ''}> Show the label "${esc(SEA_LABEL)}" (big or heavy products)</label></div>` : ''}
       <div class="fgrid" id="iNewG" hidden><label class="f">New group name<input id="iNgName" placeholder="e.g. Watches"></label><label class="f">Markup for this group (%)<input id="iNgMk" inputmode="decimal" value="${Math.round((num(st.defaultMarkup) || 0.45) * 100)}"></label></div>
       <div class="fgrid"><label class="f">${PO() ? 'Pieces on offer' : 'Pieces bought'}<input id="iQty" inputmode="numeric" value="${esc(v.qty)}">${PO() ? '<span class="h">0 = no limit. When all are ordered it shows as sold out and leaves the catalogue.</span>' : ''}</label><label class="f">China price per piece (RMB)<input id="iRmb" inputmode="decimal" value="${esc(v.rmb)}"></label></div>
       <div class="fgrid"><label class="f">Market price seen (D) <span class="h">optional</span><input id="iMkt" inputmode="decimal" value="${esc(v.market || '')}"></label>
         <label class="f">Own selling price (D) <span class="h">optional, replaces target (ask = this + bargaining room)</span><input id="iFinal" inputmode="decimal" value="${esc(v.finalPrice || '')}"></label></div>
+      <div class="f cpbox"><b>Promotion</b><span class="h">optional. A lower price for a time. It starts and stops by itself, in the shop and in the catalogue (the old price is crossed out).</span>
+        <div class="fgrid"><label class="f">Promo price (D)<input id="iPrP" inputmode="decimal" value="${num(v.promoPrice) > 0 ? esc(v.promoPrice) : ''}"></label><label class="f">Name <span class="h">optional</span><input id="iPrL" maxlength="30" placeholder="e.g. Black Friday" value="${esc(v.promoLabel || '')}"></label></div>
+        <div class="fgrid"><label class="f">From <span class="h">empty = now</span><input id="iPrF" type="date" value="${esc(v.promoFrom || '')}"></label><label class="f">Last day<input id="iPrT" type="date" value="${esc(v.promoTo || '')}"></label></div>
+        <div class="small" id="iPrH" style="margin-top:6px"></div></div>
       <label class="f">Markup (%) <span class="h">optional, only for this item; empty = use the group's ${P(grpMk(v.group))}</span><input id="iMk" inputmode="decimal" value="${hasPct(v.markupPct) ? +(num(v.markupPct) * 100).toFixed(2) : ''}" placeholder="${Math.round(grpMk(v.group) * 100)}"></label>
       <label class="f">Lowest = own cost + (%) <span class="h">optional, only for this item; empty = use the group's ${P(floorFor({ group: v.group }, st)[0])}</span><input id="iFloor" inputmode="decimal" value="${hasPct(v.floorPct) ? Math.round(num(v.floorPct) * 100) : ''}" placeholder="${Math.round(floorFor({ group: v.group }, st)[0] * 100)}"></label>
       <div class="f cpbox"><b>Weight, size and rate</b><span class="h">optional. Gives this item its own shipping cost and exchange rate. Leave empty to share the costs by China price as before.</span>
@@ -2806,6 +2833,10 @@ function itemSheet(itemId) {
     const io = $('#iOpts', sh); if (io) io.onclick = () => { closeSheet(); productSheet(it.fam || null, it.fam ? null : it.id); };
     const pst = $('#iPoster', sh); if (pst) pst.onclick = () => { try { posterSheetFor(it); } catch (err) { toast('Could not open the poster: ' + String((err && err.message) || err).slice(0, 120)); } };
     const f = $('#itF', sh); if (!f) return;
+    { const hint = () => { const p = num($('#iPrP', sh).value), el = $('#iPrH', sh); if (!el) return; const lo = it ? it.lowest : 0, rg = it ? it.regular : 0; let m = '';
+        if (p > 0) m = rg && p >= rg ? `Not a promotion: the normal price is ${D(rg)}.` : lo && p < lo ? `Below your lowest price (${D(lo)}): you would sell under your own rule.` : rg ? `${D(rg)} to ${D(p)} (${Math.round((1 - p / rg) * 100)}% off).` : '';
+        el.textContent = m; };
+      $('#iPrP', sh).addEventListener('input', hint); hint(); }
     { const g = id => num($(id, sh).value), cbmEl = $('#iCbm', sh);
       const frt = () => { const m = $('#iMode', sh).value, kg = g('#iKg'), cb = g('#iCbm'), A = num(ship.airKg), U = num(ship.seaUsd), X = num(ship.usdRate); let t = '';
         if (m === 'air') t = !(A > 0) ? 'Set the air price per kg in Edit shipment first.' : !(kg > 0) ? 'Type the weight in kg.' : `Shipping cost: ${D(kg * A)} per piece (${kg} kg × ${D(A)} per kg).`;
@@ -2890,6 +2921,11 @@ function itemSheet(itemId) {
         if (m) d.shipMode = m; if (f('#iKg') > 0) d.kg = f('#iKg'); if (f('#iCbm') > 0) d.cbm = f('#iCbm');
         if (f('#iDL') > 0) d.dimL = f('#iDL'); if (f('#iDW') > 0) d.dimW = f('#iDW'); if (f('#iDH') > 0) d.dimH = f('#iDH');
         if (f('#iRate') > 0) d.rateRMB = f('#iRate'); if (f('#iLandM') > 0) d.landedManual = f('#iLandM'); if (f('#iOwnM') > 0) d.ownManual = f('#iOwnM'); }
+      { const pp = num($('#iPrP', sh).value), pf = $('#iPrF', sh).value, pt = $('#iPrT', sh).value, pl = String($('#iPrL', sh).value).replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, 30);
+        if (pp > 0) { if (!/^\d{4}-\d{2}-\d{2}$/.test(pt)) return toast('Choose the last day of the promotion.'); if (pf && pf > pt) return toast('The promotion cannot end before it starts.');
+          if (it && it.regular && pp >= it.regular) return toast(`The promo price must be below the normal price (${D(it.regular)}).`);
+          d.promoPrice = pp; d.promoTo = pt; if (pf) d.promoFrom = pf; if (pl) d.promoLabel = pl; } }
+      if ($('#iMin', sh)) { const mn = Math.round(num($('#iMin', sh).value)); if (mn > 0) d.ordMin = mn; }
       if ($('#iCat', sh)) d.catHide = !$('#iCat', sh).checked; else if (it && it.catHide) d.catHide = it.catHide;
       if ($('#iDep', sh)) {   // order store: the owner's own deposit % / arrival time / label for this product (empty = the store's)
         const ds = $('#iFull', sh).checked ? '' : String($('#iDep', sh).value).replace('%', '').trim(), dv = Math.round(num(ds));
@@ -3071,6 +3107,9 @@ function shipSheet(shipId) {
       <div class="row"><button type="button" class="btn" data-add="costs">Add cost</button></div>
       ${shipHelperHtml('h')}
       <div class="row" style="margin-top:6px"><button type="button" class="btn" id="hShip">Add shipping cost</button><button type="button" class="btn" id="hCom">Add 10% commission</button></div></div>
+    ${PO() ? `<div class="panel"><h3>Group order window</h3><p class="note">Optional. Orders for this shipment's products are taken only between these days (the last day included). The catalogue shows the countdown and then "Closed". Closed products stay visible until you close the shipment. Set a minimum for each product in its own form (Stock → open the item).</p>
+      <div class="fgrid"><label class="f">Opens <span class="h">empty = already open</span><input type="date" data-k="ordFrom" value="${esc(d.ordFrom || '')}"></label><label class="f">Last day<input type="date" data-k="ordTo" value="${esc(d.ordTo || '')}"></label></div>
+      <label class="f">Name <span class="h">optional, e.g. December group order</span><input data-k="ordLabel" maxlength="40" value="${esc(d.ordLabel || '')}"></label></div>` : ''}
     <div class="panel"><h3>Shipping price by weight or volume</h3><p class="note">Optional. All-in prices, duties included. Items with a weight (air) or volume (sea) get their own shipping cost; the rest share the costs above as before. <b>Do not also enter the same shipping in Import costs</b>, or it is counted twice.</p>
       <div class="fgrid"><label class="f">Air (D per kg)<input data-k="airKg" inputmode="decimal" value="${num(d.airKg) > 0 ? esc(d.airKg) : ''}"></label><label class="f">Sea (USD per CBM)<input data-k="seaUsd" inputmode="decimal" value="${num(d.seaUsd) > 0 ? esc(d.seaUsd) : ''}"></label><label class="f">D per 1 USD <span class="h">for sea</span><input data-k="usdRate" inputmode="decimal" value="${num(d.usdRate) > 0 ? esc(d.usdRate) : ''}"></label></div>
       ${chkHtml()}</div>
@@ -3107,6 +3146,8 @@ function shipSheet(shipId) {
     body.addEventListener('submit', async e => {
       e.preventDefault();
       if (!String(d.name).trim()) return toast('Give the shipment a name.');
+      if (!d.ordFrom) delete d.ordFrom; if (!d.ordTo) delete d.ordTo; if (!String(d.ordLabel || '').trim()) delete d.ordLabel; else d.ordLabel = String(d.ordLabel).replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, 40);
+      if (d.ordFrom && d.ordTo && d.ordFrom > d.ordTo) return toast('The last day cannot be before the opening day.');
       d.exchanges = (d.exchanges || []).filter(x => num(x.gmd) > 0);
       d.costs = (d.costs || []).filter(x => num(x.gmd) > 0 || String(x.label).trim());
       const id = ex ? ex.id : 's' + Date.now().toString(36);

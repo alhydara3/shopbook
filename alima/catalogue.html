@@ -67,6 +67,10 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
 .dep{font-size:13px;color:var(--muted);margin-top:4px}.dep b{color:var(--ink)}
 .howto{background:#eef3fb;border-radius:12px;padding:10px 12px;font-size:14px;line-height:1.45;margin:10px 0 4px}
 .ask{color:var(--navy);font-weight:700;text-decoration:none}
+.was{text-decoration:line-through;color:#6b7280;font-weight:400;font-size:.78em;margin-right:6px}
+.tag.promo{color:#8a1c12;background:#fdecea;border-color:#f3b9b3}
+.win{font-size:13px;font-weight:700;color:#1b5e20;margin-top:6px}.win.soon{color:#6b4100}.win.closed{color:#6b7280}
+.goal{margin-top:6px;font-size:13px;font-weight:700}.goal .gb{height:8px;border-radius:999px;background:#e5e7eb;overflow:hidden;margin-bottom:3px}.goal .gb i{display:block;height:100%;background:#1b7f3b}
 .msg{background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px;text-align:center;color:var(--muted)}
 .msg button{margin-top:12px;font:inherit;font-weight:700;border:0;border-radius:10px;background:var(--navy);color:#fff;padding:10px 18px;min-height:44px;cursor:pointer}
 .note{color:var(--muted);font-size:13px;margin-top:18px;text-align:center;white-space:pre-line;overflow-wrap:anywhere}
@@ -186,7 +190,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
   }
   function show(v) {
     data = v || {};
-    if (Array.isArray(data.items)) data.items = fold(data.items);
+    if (Array.isArray(data.items)) data.items = fold(prep(data.items));
     var name = data.business || CFG.name || 'Our shop';
     $('nm').textContent = name; document.title = name + ' · Products';
     // the shop's logo (the receipt logo), only a picture sent as data; otherwise no logo
@@ -223,15 +227,43 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
       var ph = x.photo ? '<img src="' + esc(x.photo) + '" alt="' + esc(x.name) + '" loading="lazy">' : esc(x.code || '');
       var askLink = wa ? '<a class="ask" href="' + askUrl(x) + '" target="_blank" rel="noopener">Ask us</a>' : '';
       var n = (x.hd ? 0 : 1) + (Number(x.more) || 0) || 1;
-      return '<article class="card"><div class="ph tap" data-i="' + i + '">' + ph + (x.photo && n > 1 ? '<span class="badge">' + n + ' photos</span>' : '') + (x.vid ? '<span class="badge vb">▶ video</span>' : '') + '</div><div class="body">' + (sea(x) ? '<span class="tag">' + SEA + '</span>' : '') + '<div class="nm">' + esc(x.name) + '</div>' +
-        '<div class="pr"><div class="p-price"><div class="k">' + (x.isFrom ? 'From' : 'Price') + '</div><div class="v">' + D(x.price) + '</div></div></div>' + (P.cardX ? '<div class="opn">' + P.vs.length + ' option' + (P.vs.length === 1 ? '' : 's') + '</div>' : '') +
-        (ord() ? (full(x) ? (whenOwn(x) ? '<div class="dep">Arrives in about ' + esc(whenOwn(x)) + '</div>' : '') : '<div class="dep">Deposit <b>' + D(depOf(x)) + '</b> (' + pct(x) + ')' + (whenOwn(x) ? '<br>Arrives in about ' + esc(whenOwn(x)) : '') + '</div>') : '') +
+      return '<article class="card"><div class="ph tap" data-i="' + i + '">' + ph + (x.photo && n > 1 ? '<span class="badge">' + n + ' photos</span>' : '') + (x.vid ? '<span class="badge vb">▶ video</span>' : '') + '</div><div class="body">' + (sea(x) ? '<span class="tag">' + SEA + '</span>' : '') + (x.pTag ? '<span class="tag promo">' + esc(x.pTag) + '</span>' : '') + '<div class="nm">' + esc(x.name) + '</div>' +
+        '<div class="pr"><div class="p-price"><div class="k">' + (x.isFrom ? 'From' : 'Price') + '</div><div class="v">' + (x.was ? '<s class="was">' + D(x.was) + '</s>' : '') + D(x.price) + '</div></div></div>' + (P.cardX ? '<div class="opn">' + P.vs.length + ' option' + (P.vs.length === 1 ? '' : 's') + '</div>' : '') +
+        (ord() && x.ws !== 'closed' ? (full(x) ? (whenOwn(x) ? '<div class="dep">Arrives in about ' + esc(whenOwn(x)) + '</div>' : '') : '<div class="dep">Deposit <b>' + D(depOf(x)) + '</b> (' + pct(x) + ')' + (whenOwn(x) ? '<br>Arrives in about ' + esc(whenOwn(x)) : '') + '</div>') : '') +
+        winLine(x) + goalLine(x) +
         '<button type="button" class="more" data-i="' + i + '">Details</button>' +
         '<div class="foot"><span class="left">' + esc(leftText(x)) + '</span>' + askLink + '</div></div></article>';
     }).join('') + '</div>';
   }
   // pieces left as the owner chose: the number, "In stock", or "Only N left" when few (the server leaves hidden numbers out)
   // a pre-order store: the reply carries {deposit, arrive}; the deposit is rounded up to D25 like in the Shop Book
+  // promotions and group-order windows follow today's date (Banjul = UTC), so they start and stop by themselves
+  function dayNow() { return new Date().toISOString().slice(0, 10); }
+  function okD(s) { return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s); }
+  function dm(s) { try { return new Date(s + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }); } catch (e) { return s; } }
+  function daysTo(s) { return Math.round((Date.parse(s + 'T00:00:00Z') - Date.parse(dayNow() + 'T00:00:00Z')) / 864e5); }
+  function prep(items) {
+    var t = dayNow();
+    items.forEach(function (x) {
+      var pr = Number(x.pr) || 0, base = Number(x.price) || 0;
+      if (pr > 0 && pr < base && okD(x.pt) && t <= x.pt && (!okD(x.pf) || t >= x.pf)) { x.was = base; x.price = Math.round(pr); x.pTag = (typeof x.pl === 'string' && x.pl.trim() ? x.pl.trim().slice(0, 30) : 'Promo') + ' · until ' + dm(x.pt); }
+      if (ord() && (okD(x.of) || okD(x.ot))) x.ws = okD(x.of) && t < x.of ? 'soon' : okD(x.ot) && t > x.ot ? 'closed' : 'open';
+    });
+    return items;
+  }
+  function winLine(x) {
+    if (!x.ws) return '';
+    var lab = typeof x.ol === 'string' && x.ol.trim() ? esc(x.ol.trim().slice(0, 40)) + ': ' : '';
+    if (x.ws === 'soon') return '<div class="win soon">' + lab + 'Orders open on ' + dm(x.of) + '</div>';
+    if (x.ws === 'closed') return '<div class="win closed">' + lab + 'Closed · orders ended on ' + dm(x.ot) + '</div>';
+    var d = okD(x.ot) ? daysTo(x.ot) : null;
+    return '<div class="win">' + lab + (d == null ? 'Orders open' : 'Order by ' + dm(x.ot) + ' · ' + (d <= 0 ? 'last day' : d === 1 ? '1 day left' : d + ' days left')) + '</div>';
+  }
+  function goalLine(x) {
+    var m = Number(x.om) || 0; if (!(m > 0) || !ord()) return '';
+    var c = Math.max(0, Number(x.oc) || 0), p = Math.min(100, Math.round(c / m * 100));
+    return '<div class="goal"><div class="gb"><i style="width:' + p + '%"></i></div>' + (c >= m ? 'Target reached: ' + c + ' ordered' : c + ' of ' + m + ' ordered') + '</div>';
+  }
   function ord() { var o = data && data.order; return o && Number(o.deposit) > 0 && Number(o.deposit) <= 1 ? o : null; }
   // a product may have its own deposit (dep) and arrival time (when), and the label "Made to order · by sea" (sea)
   var SEA = 'Made to order · by sea';
@@ -243,6 +275,8 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
   function whenOf(x) { return whenOwn(x) || ord().arrive || ''; }
   function sea(x) { return !!(ord() && x.sea === true); }
   function leftText(x) {
+    if (x.ws === 'closed') return 'Closed';
+    if (x.ws === 'soon') return 'Opens ' + dm(x.of);
     if (ord()) return 'Order now';
     var n = Number(x.left);
     if (x.left == null || !(n > 0)) return 'In stock';
@@ -250,7 +284,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
   }
   function askUrl(x) {
     var name = data.business || CFG.name || '';
-    return 'https://wa.me/' + waNum(data.phone) + '?text=' + encodeURIComponent(ord() ? 'Hello ' + name + ', I would like to order ' + (x.vname || x.name) + (x.code ? ' (' + x.code + ')' : '') + ', price ' + D(x.price) + '.' : 'Hello ' + name + ', I am interested in ' + (x.vname || x.name) + (x.code ? ' (' + x.code + ')' : '') + '.');
+    return 'https://wa.me/' + waNum(data.phone) + '?text=' + encodeURIComponent((x.ws === 'closed' || x.ws === 'soon') ? 'Hello ' + name + ', I would like to know when I can order ' + (x.vname || x.name) + (x.code ? ' (' + x.code + ')' : '') + '.' : ord() ? 'Hello ' + name + ', I would like to order ' + (x.vname || x.name) + (x.code ? ' (' + x.code + ')' : '') + ', price ' + D(x.price) + '.' : 'Hello ' + name + ', I am interested in ' + (x.vname || x.name) + (x.code ? ' (' + x.code + ')' : '') + '.');
   }
   // the details of one product, over the list; the phone's Back button closes it
   var opened = false, lastFocus = null, extra = {}, showing = null;
@@ -260,15 +294,15 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
     var wa = waNum(data.phone), more = Number(x.more) || 0; showing = x;
     $('dlg').innerHTML = '<div class="top"><button type="button" class="x" id="dlgX" aria-label="Close">✕</button></div>' +
       (x.photo || more || x.vid ? '<div class="gal" id="gal"><div class="track" id="track"></div><button type="button" class="gnav prev" id="gPrev" aria-label="Previous photo">‹</button><button type="button" class="gnav next" id="gNext" aria-label="Next photo">›</button><span class="gcount" id="gCount" hidden></span></div>' : '') +
-      '<div class="in">' + (sea(x) ? '<span class="tag">' + SEA + '</span>' : '') + '<h2 id="dlgT">' + esc(x.name) + '</h2>' +
+      '<div class="in">' + (sea(x) ? '<span class="tag">' + SEA + '</span>' : '') + (x.pTag ? '<span class="tag promo">' + esc(x.pTag) + '</span>' : '') + '<h2 id="dlgT">' + esc(x.name) + '</h2>' +
       (x.code ? '<div class="sz">' + esc(x.code) + '</div>' : '') +
       (P0 ? '<div class="opts">' + optBlock(P0) + '</div>' : '') +
-      '<div class="pr"><div class="p-price"><div class="k">Price</div><div class="v">' + D(x.price) + '</div></div></div>' +
-      (ord() ? '<div class="howto"><b>How ordering works</b><br>' + (sea(x) ? 'This product is made to order and comes by sea. ' : '') + (full(x) ? 'Pay the full price (' + D(x.price) + ') to order. We order it from China for you' + (whenOf(x) ? '; it arrives in about ' + esc(whenOf(x)) : '') + '.' : 'Pay a deposit of ' + D(depOf(x)) + ' (' + pct(x) + ') to order. We order it from China for you' + (whenOf(x) ? '; it arrives in about ' + esc(whenOf(x)) : '') + '. Pay the rest (' + D(Number(x.price) - depOf(x)) + ') when it arrives.') + '</div>' : '<div class="left">' + esc(leftText(x)) + '</div>') +
+      '<div class="pr"><div class="p-price"><div class="k">Price</div><div class="v">' + (x.was ? '<s class="was">' + D(x.was) + '</s>' : '') + D(x.price) + '</div></div></div>' + winLine(x) + goalLine(x) +
+      (ord() && x.ws !== 'closed' ? '<div class="howto"><b>How ordering works</b><br>' + (sea(x) ? 'This product is made to order and comes by sea. ' : '') + (full(x) ? 'Pay the full price (' + D(x.price) + ') to order. We order it from China for you' + (whenOf(x) ? '; it arrives in about ' + esc(whenOf(x)) : '') + '.' : 'Pay a deposit of ' + D(depOf(x)) + ' (' + pct(x) + ') to order. We order it from China for you' + (whenOf(x) ? '; it arrives in about ' + esc(whenOf(x)) : '') + '. Pay the rest (' + D(Number(x.price) - depOf(x)) + ') when it arrives.') + '</div>' : '<div class="left">' + esc(leftText(x)) + '</div>') +
       (x.sizes ? '<h3>Sizes / colours</h3><p class="txt">' + esc(x.sizes) + '</p>' : '') +
       (x.od ? '<h3>This option</h3><p class="txt">' + esc(x.od) + '</p>' : '') +
       (x.desc ? '<h3>Details</h3><p class="txt">' + esc(x.desc) + '</p>' : '') +
-      (wa ? '<a class="askbig" href="' + askUrl(x) + '" target="_blank" rel="noopener">' + (ord() ? 'Order this on WhatsApp' : 'Ask about this on WhatsApp') + '</a>' : '') + '</div>';
+      (wa ? '<a class="askbig" href="' + askUrl(x) + '" target="_blank" rel="noopener">' + (x.ws === 'closed' ? 'Closed: ask about the next round' : x.ws === 'soon' ? 'Not open yet: ask about this' : ord() ? 'Order this on WhatsApp' : 'Ask about this on WhatsApp') + '</a>' : '') + '</div>';
     drawGallery(x); if (x.vid) drawVideo(x, !(x.photo || more));
     if (more && !extra[x.pid]) {
       fetch(CFG.api, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'catalogPhotos', args: [x.pid] }), credentials: 'omit', cache: 'no-store' })
