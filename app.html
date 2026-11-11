@@ -2559,7 +2559,7 @@ function videoMeta(file) {
     v.onloadedmetadata = () => { const d = v.duration; URL.revokeObjectURL(url); res({ secs: isFinite(d) ? d : 0, w: v.videoWidth, h: v.videoHeight }); };
     v.onerror = () => { URL.revokeObjectURL(url); rej(new Error('This video cannot be read on this phone.')); }; v.src = url; });
 }
-// Plays the video once on a hidden canvas at 480p and records it again (at most 30 s): a 30 s clip becomes about 3-4 MB.
+// Plays the video once on a hidden canvas at 720p and records it again (at most 30 s): a 30 s clip becomes about 6 MB.
 async function shrinkVideo(file, onP) {
   const type = recType(), v = document.createElement('video'), url = URL.createObjectURL(file);
   v.playsInline = true; v.preload = 'auto'; v.src = url;
@@ -2573,14 +2573,14 @@ async function shrinkVideo(file, onP) {
     if (file.size <= VID_MAX && /^video\/(mp4|webm)/.test(file.type) && full <= VID_SECS + 1) return { blob: file, type: file.type.split(';')[0], secs: Math.round(full * 10) / 10, poster };
     throw new Error('This phone cannot make videos smaller. Use Chrome on Android, or a video under 12 MB and 30 seconds.');
   }
-  const k = Math.min(1, 480 / Math.min(v.videoWidth, v.videoHeight)), W = Math.max(2, Math.round(v.videoWidth * k / 2) * 2), H = Math.max(2, Math.round(v.videoHeight * k / 2) * 2);
+  const k = Math.min(1, 720 / Math.min(v.videoWidth, v.videoHeight)), W = Math.max(2, Math.round(v.videoWidth * k / 2) * 2), H = Math.max(2, Math.round(v.videoHeight * k / 2) * 2);
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const cx = cv.getContext('2d'); cx.drawImage(v, 0, 0, W, H);
   const stream = cv.captureStream(25); let ac = null;
   try {   // the sound goes into the recording, not out of the speaker
     ac = new (window.AudioContext || window.webkitAudioContext)(); const src = ac.createMediaElementSource(v), dst = ac.createMediaStreamDestination();
     src.connect(dst); await ac.resume(); dst.stream.getAudioTracks().forEach(tr => stream.addTrack(tr));
   } catch (e) { v.muted = true; }
-  const rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 900000, audioBitsPerSecond: 64000 }), chunks = [];
+  const rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 1600000, audioBitsPerSecond: 64000 }), chunks = [];
   rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
   const done = new Promise(res => { rec.onstop = res; });
   let stopped = false;
