@@ -69,6 +69,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
 .ask{color:var(--navy);font-weight:700;text-decoration:none}
 .was{text-decoration:line-through;color:#6b7280;font-weight:400;font-size:.78em;margin-right:6px}
 .tag.promo{color:#8a1c12;background:#fdecea;border-color:#f3b9b3}
+.bulk{margin:0 0 10px;padding:10px 12px;border-radius:10px;background:#fff6dc;border:1px solid #e3c36a;color:#4a3500;font-size:14px;font-weight:600;line-height:1.4}.goal.mb{font-weight:700}
 .win{font-size:13px;font-weight:700;color:#1b5e20;margin-top:6px}.win.soon{color:#6b4100}.win.closed{color:#6b7280}
 .goal{margin-top:6px;font-size:13px;font-weight:700}.goal .gb{height:8px;border-radius:999px;background:#e5e7eb;overflow:hidden;margin-bottom:3px}.goal .gb i{display:block;height:100%;background:#1b7f3b}
 .msg{background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px;text-align:center;color:var(--muted)}
@@ -126,6 +127,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
 <header><div class="in"><div class="brand"><img id="logo" alt="" hidden><div class="bt"><h1 id="nm">AH CHINA ORDERS</h1><div class="sub" id="sub">Products in stock</div></div></div><div class="acts" id="acts"></div></div></header>
 <main>
   <div class="tools" id="tools" hidden><input type="search" id="q" placeholder="Search: name, size or code" aria-label="Search the products"><div class="chips" id="chips" role="group" aria-label="Groups"></div></div>
+  <div class="bulk" id="bulk" hidden></div>
   <div class="count" id="count" aria-live="polite"></div>
   <div id="out"><div class="msg">Loading the products…</div></div>
   <p class="note" id="foot">Prices in Dalasi. Stock changes during the day: ask us before you come.</p>
@@ -218,6 +220,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
     var list = (data.items || []).filter(function (x) {
       return (group === 'All' || x.group === group) && (!q || ((x.hay || x.name) + ' ' + x.code + ' ' + x.group + ' ' + x.sizes + ' ' + (x.desc || '')).toLowerCase().indexOf(q) >= 0);
     });
+    (function () { var bl = '', bx = $('bulk'); (data.items || []).some(function (x) { if (ord() && x.ws === 'open' && typeof x.ob === 'string' && x.ob.trim()) { bl = x.ob.trim().slice(0, 140); return true; } return false; }); if (bx) { bx.textContent = bl; bx.hidden = !bl; } })();
     $('count').textContent = (data.items || []).length ? list.length + ' product' + (list.length === 1 ? '' : 's') : '';
     if (!(data.items || []).length) { $('out').innerHTML = (ord() ? '<div class="msg">No products to order right now. Come back soon.</div>' : '<div class="msg">Nothing in stock to show right now. Come back soon.</div>'); return; }
     if (!list.length) { $('out').innerHTML = '<div class="msg">Nothing matches your search.</div>'; return; }
@@ -260,9 +263,13 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
     return '<div class="win">' + lab + (d == null ? 'Orders open' : 'Order by ' + dm(x.ot) + ' · ' + (d <= 0 ? 'last day' : d === 1 ? '1 day left' : d + ' days left')) + '</div>';
   }
   function goalLine(x) {
-    var m = Number(x.om) || 0; if (!(m > 0) || !ord()) return '';
+    if (!ord()) return '';
+    var mq = Number(x.mq) || 0, mb = Number(x.mb) || 0, mbl = mb > 1 ? '<div class="goal mb">Minimum order: ' + mb + ' pieces</div>' : '';
+    if (mq > 0) { var c0 = Math.max(0, Number(x.oc) || 0), p0 = Math.min(100, Math.round(c0 / mq * 100));
+      return '<div class="goal"><div class="gb"><i style="width:' + p0 + '%"></i></div>' + (c0 >= mq ? 'Supplier minimum reached: ' + c0 + ' ordered' : 'We need ' + mq + ' pieces in total to order: ' + c0 + ' so far') + '</div>' + mbl; }
+    var m = Number(x.om) || 0; if (!(m > 0)) return mbl;
     var c = Math.max(0, Number(x.oc) || 0), p = Math.min(100, Math.round(c / m * 100));
-    return '<div class="goal"><div class="gb"><i style="width:' + p + '%"></i></div>' + (c >= m ? 'Target reached: ' + c + ' ordered' : c + ' of ' + m + ' ordered') + '</div>';
+    return '<div class="goal"><div class="gb"><i style="width:' + p + '%"></i></div>' + (c >= m ? 'Target reached: ' + c + ' ordered' : c + ' of ' + m + ' ordered') + '</div>' + mbl;
   }
   function ord() { var o = data && data.order; return o && Number(o.deposit) > 0 && Number(o.deposit) <= 1 ? o : null; }
   // a product may have its own deposit (dep) and arrival time (when), and the label "Made to order · by sea" (sea)

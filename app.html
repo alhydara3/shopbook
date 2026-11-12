@@ -764,6 +764,7 @@ function saleSheet(itemId, saleId) {
       if (p <= 0) return toast('Enter the price per piece.');
       if (d >= q * p) return toast('The discount is bigger than the price.');
       if (!ex && winBlock(r)) return toast(winMsg(r));
+      if (!ex && minBuyBlock(r, q)) return toast(minBuyMsg(r));
       // never more than the stock shows (an edit may keep or lower its own pieces)
       const inStock = r.left + (ex ? num(ex.qty) : 0);
       if (ltd(r) && q > inStock && !(ex && q <= num(ex.qty))) return toast(PO() ? (inStock > 0 ? `Only ${inStock} of ${r.name} can still be ordered. The owner can raise the pieces if more can be bought.` : `${r.name} is sold out. The owner can raise the pieces if more can be bought.`) : inStock > 0 ? `Only ${inStock} in stock. If you really have more, ask the owner to correct the stock.` : `${r.name} is sold out. If you really have more, ask the owner to correct the stock.`, 6000);
@@ -1501,7 +1502,7 @@ function catalogPanel() {
 function catalogBody() {
   const items = [];
   S.ships.filter(sh => (PO() ? sh.status !== 'Closed' : sh.status === 'Selling') && !/sample shipment \(for testing\)/i.test(sh.name || '')).forEach(sh => {
-    calcShip(sh).items.filter(r => r.forSale && !soldOut(r) && r.catHide !== true).forEach(r => items.push({ id: r.id, code: String(r.code || ''), name: String(r.name || ''), group: String(r.group || ''), sizes: String(r.sizes || ''), price: num(r.regular != null ? r.regular : r.target), left: num(r.left), ...(PO() && num(r.ordMin) > 0 ? { ord: Math.max(0, Math.round(orderedQty(r.id))) } : {}) }));
+    calcShip(sh).items.filter(r => r.forSale && !soldOut(r) && r.catHide !== true).forEach(r => items.push({ id: r.id, code: String(r.code || ''), name: String(r.name || ''), group: String(r.group || ''), sizes: String(r.sizes || ''), price: num(r.regular != null ? r.regular : r.target), left: num(r.left), ...(PO() && (num(r.ordMin) > 0 || num(r.moq) > 0) ? { ord: Math.max(0, Math.round(orderedQty(r.id))) } : {}) }));
   });
   items.sort((a, b) => a.group.localeCompare(b.group) || a.code.localeCompare(b.code));
   const st = ST();
@@ -1752,6 +1753,10 @@ const soldOut = r => !!(r && r.forSale && ltd(r) && r.left <= 0);
 /* group-order window (order stores): the shipment's "Opens" and "Last day". Outside it a seller cannot take an order; the owner can (and sees why). */
 const winState = r => { const sh = r && S.ships.find(x => x.id === r.ship); if (!PO() || !sh) return ''; const f = String(sh.ordFrom || ''), e = String(sh.ordTo || ''), n = today();
   if (!f && !e) return ''; if (f && n < f) return 'soon'; if (e && n > e) return 'closed'; return 'open'; };
+const BULK_LINE = 'We buy in bulk, so you get a better price. Order before the window closes.';
+const bulkLine = sh => !sh || !(sh.ordFrom || sh.ordTo) || sh.ordLineOff === '1' ? '' : (String(sh.ordLine || '').trim() || BULK_LINE);
+const minBuyBlock = (r, q) => PO() && !OWN() && num(r.minBuy) > 1 && q < num(r.minBuy);
+const minBuyMsg = r => `${r.name}: the minimum is ${Math.round(num(r.minBuy))} pieces per order.`;
 const winBlock = r => { const w = winState(r); return (w === 'soon' || w === 'closed') && !OWN(); };
 const winMsg = r => { const sh = S.ships.find(x => x.id === r.ship) || {}, w = winState(r);
   return w === 'soon' ? `Orders for ${r.name} open on ${short(sh.ordFrom)}.` : `The order window for ${r.name} closed on ${short(sh.ordTo)}. Ask the owner.`; };
@@ -1866,6 +1871,7 @@ function basketSheet() {
         if (num(l.qty) < 1) return toast(`Enter how many ${r.name} were sold.`);
         if (num(l.price) <= 0) return toast(`Enter the price for ${r.name}.`);
         if (winBlock(r)) return toast(winMsg(r));
+        if (minBuyBlock(r, num(l.qty))) return toast(minBuyMsg(r));
         if (ltd(r) && num(l.qty) > r.left) return toast(`Only ${r.left} ${r.name} ${PO() ? 'can still be ordered' : 'in stock'}.`);
       }
       if (disc() >= gross()) return toast('The discount is bigger than the total.');
@@ -2272,7 +2278,7 @@ function posterPayload(it) {
 function fbCoverOpen() {
   if (!(PO() && OWN())) return;
   const sh = curShip(), lg = String(ST().logo || ''), cu = String(catLink() || '').replace(/^https?:\/\//i, '').replace(/^www\./i, '');
-  const payload = { v: 1, deposit: Math.round(PO_DEP() * 100), link: '', groupEnd: sh && /^\d{4}-\d{2}-\d{2}$/.test(String(sh.ordTo || '')) ? sh.ordTo : '', groupLabel: '', logo: /^data:image\/(png|jpeg|webp);base64,/.test(lg) && lg.length < 1400000 ? lg : '' };
+  const payload = { v: 1, deposit: Math.round(PO_DEP() * 100), link: '', groupEnd: sh && /^\d{4}-\d{2}-\d{2}$/.test(String(sh.ordTo || '')) ? sh.ordTo : '', groupLabel: '', groupLine: bulkLine(sh), logo: /^data:image\/(png|jpeg|webp);base64,/.test(lg) && lg.length < 1400000 ? lg : '' };
   openDocTool('cover.html', 'c', payload);
 }
 function posterSheetFor(it) {
@@ -2418,6 +2424,8 @@ function itemSheet(itemId) {
         <div class="fgrid"><label class="f">Deposit (%)<input id="iDep" inputmode="numeric" maxlength="4" value="${itDepOwn(v) && !isFull(itDepOwn(v)) ? Math.round(itDepOwn(v) * 100) : ''}" placeholder="${isFull(PO_DEP()) ? 'full' : Math.round(PO_DEP() * 100)}" ${isFull(itDepOwn(v)) ? 'disabled' : ''}></label>
           <label class="f">Arrives in about<input id="iWhen" maxlength="40" value="${esc(itWhenOwn(v))}" placeholder="${esc(PO_WHEN() || 'e.g. 10 to 12 weeks')}"></label></div>
         <label class="f">Minimum pieces to order from China <span class="h">optional target. The catalogue shows how many are ordered so far. If it is not reached you can still order what you have.</span><input id="iMin" inputmode="numeric" value="${num(v.ordMin) > 0 ? esc(v.ordMin) : ''}"></label>
+        <div class="fgrid"><label class="f">Supplier MOQ (total pieces) <span class="h">optional. The supplier needs at least this many in total. The catalogue shows how many are ordered so far${it ? ` (now ${Math.max(0, Math.round(orderedQty(it.id)))})` : ''}.</span><input id="iMoq" inputmode="numeric" value="${num(v.moq) > 0 ? esc(v.moq) : ''}"></label>
+          <label class="f">Minimum per buyer <span class="h">optional. Sellers cannot take fewer pieces than this in one order.</span><input id="iMinBuy" inputmode="numeric" value="${num(v.minBuy) > 1 ? esc(v.minBuy) : ''}"></label></div>
         <label class="row" style="flex-wrap:nowrap"><input type="checkbox" id="iFull" style="width:22px;min-height:22px" ${isFull(itDepOwn(v)) ? 'checked' : ''}> Full payment (no deposit): buyers pay the whole price when they order</label>
         <label class="row" style="flex-wrap:nowrap"><input type="checkbox" id="iSea" style="width:22px;min-height:22px" ${itSea(v) ? 'checked' : ''}> Show the label "${esc(SEA_LABEL)}" (big or heavy products)</label></div>` : ''}
       <div class="fgrid" id="iNewG" hidden><label class="f">New group name<input id="iNgName" placeholder="e.g. Watches"></label><label class="f">Markup for this group (%)<input id="iNgMk" inputmode="decimal" value="${Math.round((num(st.defaultMarkup) || 0.45) * 100)}"></label></div>
@@ -2550,6 +2558,7 @@ function itemSheet(itemId) {
         if (pp > 0) { if (!/^\d{4}-\d{2}-\d{2}$/.test(pt)) return toast('Choose the last day of the promotion.'); if (pf && pf > pt) return toast('The promotion cannot end before it starts.');
           if (it && it.regular && pp >= it.regular) return toast(`The promo price must be below the normal price (${D(it.regular)}).`);
           d.promoPrice = pp; d.promoTo = pt; if (pf) d.promoFrom = pf; if (pl) d.promoLabel = pl; } }
+      if ($('#iMoq', sh)) { const mq = Math.round(num($('#iMoq', sh).value)); if (mq > 0) d.moq = mq; const mb = Math.round(num($('#iMinBuy', sh).value)); if (mb > 1) d.minBuy = mb; }
       if ($('#iMin', sh)) { const mn = Math.round(num($('#iMin', sh).value)); if (mn > 0) d.ordMin = mn; }
       if ($('#iCat', sh)) d.catHide = !$('#iCat', sh).checked; else if (it && it.catHide) d.catHide = it.catHide;
       if ($('#iDep', sh)) {   // order store: the owner's own deposit % / arrival time / label for this product (empty = the store's)
@@ -2734,7 +2743,9 @@ function shipSheet(shipId) {
       <div class="row" style="margin-top:6px"><button type="button" class="btn" id="hShip">Add shipping cost</button><button type="button" class="btn" id="hCom">Add 10% commission</button></div></div>
     ${PO() ? `<div class="panel"><h3>Group order window</h3><p class="note">Optional. Orders for this shipment's products are taken only between these days (the last day included). The catalogue shows the countdown and then "Closed". Closed products stay visible until you close the shipment. Set a minimum for each product in its own form (Stock → open the item).</p>
       <div class="fgrid"><label class="f">Opens <span class="h">empty = already open</span><input type="date" data-k="ordFrom" value="${esc(d.ordFrom || '')}"></label><label class="f">Last day<input type="date" data-k="ordTo" value="${esc(d.ordTo || '')}"></label></div>
-      <label class="f">Name <span class="h">optional, e.g. December group order</span><input data-k="ordLabel" maxlength="40" value="${esc(d.ordLabel || '')}"></label></div>` : ''}
+      <label class="f">Name <span class="h">optional, e.g. December group order</span><input data-k="ordLabel" maxlength="40" value="${esc(d.ordLabel || '')}"></label>
+      <label class="f">Line shown to buyers <span class="h">in the catalogue and on the Facebook cover while the window is open. Empty = the standard line.</span><textarea data-k="ordLine" rows="2" maxlength="140" placeholder="${esc(BULK_LINE)}">${esc(d.ordLine || '')}</textarea></label>
+      <label class="f">Show this line<select data-k="ordLineOff"><option value="" ${d.ordLineOff === '1' ? '' : 'selected'}>Yes</option><option value="1" ${d.ordLineOff === '1' ? 'selected' : ''}>No, hide it</option></select></label></div>` : ''}
     <div class="panel"><h3>Shipping price by weight or volume</h3><p class="note">Optional. All-in prices, duties included. Items with a weight (air) or volume (sea) get their own shipping cost; the rest share the costs above as before. <b>Do not also enter the same shipping in Import costs</b>, or it is counted twice.</p>
       <div class="fgrid"><label class="f">Air (D per kg)<input data-k="airKg" inputmode="decimal" value="${num(d.airKg) > 0 ? esc(d.airKg) : ''}"></label><label class="f">Sea (USD per CBM)<input data-k="seaUsd" inputmode="decimal" value="${num(d.seaUsd) > 0 ? esc(d.seaUsd) : ''}"></label><label class="f">D per 1 USD <span class="h">for sea</span><input data-k="usdRate" inputmode="decimal" value="${num(d.usdRate) > 0 ? esc(d.usdRate) : ''}"></label></div>
       ${chkHtml()}</div>
@@ -2771,7 +2782,8 @@ function shipSheet(shipId) {
     body.addEventListener('submit', async e => {
       e.preventDefault();
       if (!String(d.name).trim()) return toast('Give the shipment a name.');
-      if (!d.ordFrom) delete d.ordFrom; if (!d.ordTo) delete d.ordTo; if (!String(d.ordLabel || '').trim()) delete d.ordLabel; else d.ordLabel = String(d.ordLabel).replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, 40);
+      if (!d.ordFrom) delete d.ordFrom; if (!d.ordTo) delete d.ordTo; if (!String(d.ordLine || '').trim()) delete d.ordLine; else d.ordLine = String(d.ordLine).replace(/[\u0000-\u001F\u007F]/g, ' ').trim().slice(0, 140); if (d.ordLineOff !== '1') delete d.ordLineOff;
+      if (!String(d.ordLabel || '').trim()) delete d.ordLabel; else d.ordLabel = String(d.ordLabel).replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, 40);
       if (d.ordFrom && d.ordTo && d.ordFrom > d.ordTo) return toast('The last day cannot be before the opening day.');
       d.exchanges = (d.exchanges || []).filter(x => num(x.gmd) > 0);
       d.costs = (d.costs || []).filter(x => num(x.gmd) > 0 || String(x.label).trim());

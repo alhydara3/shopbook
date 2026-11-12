@@ -115,7 +115,7 @@ legend { font-size: 13px; font-weight: 700; padding: 0 6px; }
     s3t: 'We order for you', s3s: 'Bought in China, shipped to us',
     s4t: 'Collect and pay the rest', s4s: 'When it arrives',
     gpill: 'GROUP ORDER OPEN', gpre: 'Order by', gdate: '', gtxt: '[25 Nov]',
-    gsub: 'We buy in bulk from China, so you get a better price. Order before the window closes.',
+    gsub: 'We buy in bulk, so you get a better price. Order before the window closes.',
     gb1: 'Pay a {dep}% deposit', gb2: 'We order for the whole group', gb3: 'Collect when it arrives'
   };
   var IDS = Object.keys(DEFAULTS);
@@ -321,6 +321,7 @@ legend { font-size: 13px; font-weight: 700; padding: 0 6px; }
     if (clean(p.link, 80)) st.link = clean(p.link, 80).replace(/^https?:\/\//i, '').replace(/^www\./i, '');
     if (+p.deposit > 0 && +p.deposit <= 100) st.dep = String(Math.round(+p.deposit));
     if (/^\d{4}-\d{2}-\d{2}$/.test(p.groupEnd || '')) { st.gdate = p.groupEnd; st.gtxt = dateText(p.groupEnd); }
+    if (clean(p.groupLine, 140)) st.gsub = clean(p.groupLine, 140);
     if (clean(p.groupLabel, 30)) st.gpill = clean(p.groupLabel, 30).toUpperCase();
     if (typeof p.logo === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(p.logo) && p.logo.length < 1500000) logoURL = p.logo;
     save();
