@@ -1786,9 +1786,20 @@ function poArrivedMsg(g) {
   return `Hello${g.customer ? ' ' + g.customer : ''}, this is ${BIZ()}. Good news: your order${g.no ? ' ' + g.no : ''} has arrived: ${poItems(g).join(', ')}.` +
     (g.due > 0.5 ? ` The balance to pay is ${D(g.due)}.` : ' It is fully paid.') + ` ${st.phone ? 'Call or WhatsApp ' + st.phone + ' to' : 'Reply to'} arrange the collection. Thank you!`;
 }
+function poStatusMsg(g) {
+  if (g.status === 'arrived') return poArrivedMsg(g);
+  const arr = poArrFor(g.list), when = /^arrives/i.test(arr) ? ` It ${arr}.` : '', due = g.due > 0.5 ? ` The balance to pay on arrival is ${D(g.due)}.` : ' It is fully paid.';
+  const hi = `Hello${g.customer ? ' ' + g.customer : ''}, this is ${BIZ()}.`, ref = g.no ? ' ' + g.no : '', its = poItems(g).join(', ');
+  if (g.status === 'shipped') return `${hi} Update on your order${ref}: it is now on the way to ${PLACE() === 'the shop' ? 'us' : PLACE()}: ${its}.${when} We will message you as soon as it arrives.${due} Thank you!`;
+  return `${hi} Update on your order${ref}: we have placed it with our supplier in China: ${its}.${when} We will message you when it is on the way and when it arrives.${due} Thank you!`;
+}
+const PO_TOLDKEY = 'ahPoToldV1';
+function poToldGet() { try { const o = JSON.parse(localStorage.getItem(PO_TOLDKEY) || '{}'); return o && typeof o === 'object' ? o : {}; } catch { return {}; } }
+function poToldSet(g) { const o = poToldGet(), k = g.k + '|' + g.status; o[k] = new Date().toISOString().slice(0, 10); const ks = Object.keys(o); if (ks.length > 400) ks.sort((a, b) => o[a].localeCompare(o[b])).slice(0, ks.length - 400).forEach(x => delete o[x]); try { localStorage.setItem(PO_TOLDKEY, JSON.stringify(o)); } catch {} }
+function poToldOn(g) { return poToldGet()[g.k + '|' + g.status] || ''; }
 function poCard(g) {
   const i = poIdx(g.status), next = PO_STEPS[i + 1], wa = waNumber(g.phone);
-  const tell = g.status === 'arrived' ? (wa ? `<a class="btn" target="_blank" rel="noopener" data-potell="${esc(g.k)}" href="https://wa.me/${wa}?text=${encodeURIComponent(poArrivedMsg(g))}">Tell the buyer on WhatsApp</a>` : '<span class="small muted">No phone saved: tell the buyer yourself.</span>') : '';
+  const tell = ['ordered', 'shipped', 'arrived'].includes(g.status) ? (wa ? `<a class="btn" target="_blank" rel="noopener" data-potell="${esc(g.k)}" href="https://wa.me/${wa}?text=${encodeURIComponent(poStatusMsg(g))}">${poToldOn(g) ? 'Tell again on WhatsApp' : 'Tell the buyer on WhatsApp'}</a>${poToldOn(g) ? `<span class="small muted" style="align-self:center">Told ${esc(nice(poToldOn(g)))}</span>` : ''}` : '<span class="small muted">No phone saved: tell the buyer yourself.</span>') : '';
   return `<div class="panel" style="margin:8px 0 0;padding:12px" data-pocard="${esc(g.k)}">
     <div class="spread"><div style="min-width:0"><b>${esc(g.customer || 'No name')}</b><div class="small muted">${[g.no, nice(g.date), g.phone].filter(Boolean).map(esc).join(' · ')}</div></div>
       <span class="pill ${g.status === 'arrived' ? 'warn' : g.status === 'collected' ? 'ok' : ''}">${esc(poLabel(g.status))}</span></div>
@@ -1822,12 +1833,15 @@ function ordersSheet(filt) {
   const body = `<div class="chips" id="poChips">${[['open', 'All open'], ...PO_STEPS].map(([k, l]) => `<button type="button" class="chip" data-pof="${k}" aria-pressed="${filt === k}">${esc(l)} (${cnt(k)})</button>`).join('')}</div>
     ${(filt === 'open' || filt === 'new') && needRows.length ? `<div class="alert info" style="margin-top:10px"><b class="i">i</b><div style="min-width:0;flex:1"><b>To order from China</b> (orders waiting)
       <div class="list" style="margin-top:6px">${needRows.map(x => `<div class="spread small"><span>${esc(x.code)} ${esc(x.name)}${x.size ? ' · ' + esc(x.size) : ''}${x.sea ? ' · by sea' : ''}</span><b>${x.qty} pc${x.qty === 1 ? '' : 's'}</b></div>`).join('')}</div></div></div>` : ''}
+    ${(filt === 'ordered' || filt === 'shipped' || filt === 'arrived') && cnt(filt) ? `<p class="note" style="margin:10px 0 0">Tap "Tell the buyer on WhatsApp" on each order to send an update. The message is filled in; you can change it before sending. "Told" shows who you have already messaged.</p>` : ''}
     ${S.canWrite && step && step[2] && cnt(filt) > 1 ? `<button type="button" class="btn block" style="margin-top:10px" data-pomove="${filt}">${esc(step[2])}: all ${cnt(filt)} orders</button>` : ''}
     ${OWN() ? `<button type="button" class="btn ghost block" style="margin-top:10px" data-dlog="1">Document log (${(S.docs || []).length})</button>` : ''}
     <div>${shown.map(poCard).join('') || '<div class="empty">No orders here.</div>'}</div>`;
   openSheet('Orders', body, sh => {
     const byK = k => G.find(g => g.k === k);
     sh.addEventListener('click', async e => {
+      const ta = e.target.closest('a[data-potell]');
+      if (ta) { const g = byK(ta.dataset.potell); if (g) { poToldSet(g); ta.textContent = 'Tell again on WhatsApp'; if (!ta.nextElementSibling || !ta.nextElementSibling.matches('span.small')) { const sp = document.createElement('span'); sp.className = 'small muted'; sp.style.alignSelf = 'center'; sp.textContent = 'Told ' + nice(poToldOn(g)); ta.after(sp); } } return; }
       const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
       if (d.pof) return ordersSheet(d.pof);
       if (d.porcpt) { closeSheet(); return receiptSheet(d.porcpt); }
