@@ -1496,7 +1496,7 @@ function catalogPanel() {
     ${on && !link ? '<p class="note">Open the Shop Book app (the installed one) to see and copy the link.</p>' : ''}
     ${on ? `<p class="small muted" style="margin:8px 0 0">${c ? `Last updated ${esc(when)} · ${(c.items || []).length} products` : 'Being prepared'}. It updates by itself whenever you or ${esc(SELLER())} open the Shop Book.</p>` : ''}
     <p class="small" style="margin:8px 0 0">Footer: <span class="muted" style="white-space:pre-line">${esc(catFoot())}</span></p>
-    ${OWN() ? `<div class="fgrid" style="margin-top:10px">${PO() ? '' : '<button type="button" class="btn" data-act="catLeft">Pieces left: change what buyers see</button>'}<button type="button" class="btn" data-act="catFoot">Footer text: change it</button><button type="button" class="btn" data-act="catFb">Facebook page link${(ST().catalog || {}).fb ? ': on' : ''}</button><button type="button" class="btn ${on ? 'ghost' : 'primary'}" data-act="catToggle">${on ? 'Turn the catalogue off' : 'Turn the catalogue on'}</button></div>` : ''}</div>`;
+    ${OWN() ? `<div class="fgrid" style="margin-top:10px">${PO() ? '' : '<button type="button" class="btn" data-act="catLeft">Pieces left: change what buyers see</button>'}<button type="button" class="btn" data-act="catFoot">Footer text: change it</button>${PO() ? '<button type="button" class="btn" data-act="fbCover">Facebook cover and picture</button>' : ''}<button type="button" class="btn" data-act="catFb">Facebook page link${(ST().catalog || {}).fb ? ': on' : ''}</button><button type="button" class="btn ${on ? 'ghost' : 'primary'}" data-act="catToggle">${on ? 'Turn the catalogue off' : 'Turn the catalogue on'}</button></div>` : ''}</div>`;
 }
 function catalogBody() {
   const items = [];
@@ -2268,6 +2268,12 @@ function posterPayload(it) {
   const dep = itDepOwn(it) || PO_DEP(), when = itWhen(it);
   const lines = String(it.desc || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean).slice(0, 5);
   return { v: 1, photo: true, specs: lines, text: { tag: String(it.group || '').toUpperCase(), name1: n1, name2: n2, tagline: itSea(it) ? SEA_LABEL : '', price: num(it.target) > 0 ? 'D ' + Math.round(num(it.target)).toLocaleString('en-US') : '', deposit: isFull(dep) ? 'Full payment when you order' : Math.round(dep * 100) + '% deposit to confirm your order', arrival: when ? 'About ' + when : '', extra: it.sizes || '', ref: it.code || '' } };
+}
+function fbCoverOpen() {
+  if (!(PO() && OWN())) return;
+  const sh = curShip(), lg = String(ST().logo || ''), cu = String(catLink() || '').replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+  const payload = { v: 1, deposit: Math.round(PO_DEP() * 100), link: '', groupEnd: sh && /^\d{4}-\d{2}-\d{2}$/.test(String(sh.ordTo || '')) ? sh.ordTo : '', groupLabel: '', logo: /^data:image\/(png|jpeg|webp);base64,/.test(lg) && lg.length < 1400000 ? lg : '' };
+  openDocTool('cover.html', 'c', payload);
 }
 function posterSheetFor(it) {
   if (!(PO() && OWN())) return;
@@ -3360,6 +3366,7 @@ document.addEventListener('click', e => {
   else if (a === 'poSet') poSetSheet();
   else if (a === 'catFoot') catFootSheet();
   else if (a === 'catFb') catFbSheet();
+  else if (a === 'fbCover') fbCoverOpen();
   else if (a === 'catToggle') { const on = !catOn(); saveSettings({ catalog: { ...(ST().catalog || {}), on, url: catLink() } }).then(ok => { if (!ok) return; logEvent(on ? 'Catalogue on' : 'Catalogue off', 'settings', on ? 'Public catalogue switched on' : 'Public catalogue switched off'); toast(on ? 'The catalogue is on' : 'The catalogue is off'); }); }
   else if (a === 'catCopy') { Promise.resolve().then(() => navigator.clipboard.writeText(catLink())).then(() => toast('Link copied'), () => toast('Could not copy. Press on the link to copy it.')); }
   else if (a === 'bkSheet') backupToSheet(t);

@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AH China Orders – Facebook cover and picture</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; background: #e9eef7; color: #14264a; }
+.wrap { max-width: 880px; margin: 0 auto; padding: 14px 14px 80px; }
+h1 { font-size: 19px; margin: 6px 0 4px; }
+p.hint { font-size: 13px; color: #4a5878; margin: 0 0 12px; line-height: 1.45; }
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
+.tabs button { font: inherit; font-size: 14px; font-weight: 700; padding: 10px 14px; border-radius: 999px; border: 2px solid #1f3864; background: #fff; color: #1f3864; cursor: pointer; }
+.tabs button[aria-pressed="true"] { background: #1f3864; color: #fff; }
+.stage { background: #fff; border: 1px solid #c3cde3; border-radius: 14px; padding: 12px; margin-bottom: 14px; }
+#cv { width: 100%; height: auto; display: block; border-radius: 6px; background: #cfd8ea; }
+#cv.round { border-radius: 50%; max-width: 360px; margin: 0 auto; }
+.note { font-size: 12px; color: #4a5878; margin: 8px 0 0; line-height: 1.4; }
+fieldset { border: 1px solid #c3cde3; border-radius: 12px; margin: 0 0 14px; padding: 10px 12px 6px; background: #fff; }
+legend { font-size: 13px; font-weight: 700; padding: 0 6px; }
+.f { display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px; }
+.f label { font-size: 12px; font-weight: 600; color: #4a5878; }
+.f input[type=text], .f input[type=date], .f input[type=number] { font: inherit; font-size: 15px; padding: 9px 10px; border: 1px solid #a9b6d3; border-radius: 8px; background: #fff; color: #14264a; width: 100%; }
+.f input[type=file] { font-size: 13px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 520px) { .two { grid-template-columns: 1fr; } }
+.row { display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0 10px; }
+.btn { font: inherit; font-size: 15px; font-weight: 700; padding: 12px 16px; border-radius: 10px; border: 2px solid #1f3864; background: #fff; color: #1f3864; cursor: pointer; }
+.btn.primary { background: #1f3864; color: #fff; }
+.btn:active { transform: translateY(1px); }
+#status { font-size: 13px; color: #1b5e20; min-height: 18px; margin: 4px 0 10px; }
+#back-store { padding: 8px 12px; background: #0F2A63; font: 600 14px Arial, sans-serif; }
+#back-store a { color: #fff; text-decoration: none; }
+.chk { display: flex; align-items: center; gap: 8px; font-size: 14px; margin: 2px 0 10px; }
+.chk input { width: 20px; height: 20px; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Facebook cover and picture</h1>
+  <p class="hint">Choose a design, change the words, then download the picture and upload it to your Facebook page. Your changes are kept on this phone.</p>
+  <div class="tabs" role="group" aria-label="Design">
+    <button type="button" data-d="perm" aria-pressed="true">Permanent cover</button>
+    <button type="button" data-d="group" aria-pressed="false">Group-order cover</button>
+    <button type="button" data-d="profile" aria-pressed="false">Profile picture</button>
+  </div>
+  <div class="stage">
+    <canvas id="cv" width="1640" height="624" aria-label="Preview"></canvas>
+    <p class="note" id="sizeNote"></p>
+  </div>
+  <div class="row">
+    <button type="button" class="btn primary" id="dl">Download picture</button>
+    <button type="button" class="btn" id="reset">Put the original words back</button>
+  </div>
+  <div id="status" role="status"></div>
+
+  <fieldset>
+    <legend>Shop details (all designs)</legend>
+    <div class="two">
+      <div class="f"><label for="brand">Shop name</label><input type="text" id="brand" maxlength="40"></div>
+      <div class="f"><label for="wa">WhatsApp number</label><input type="text" id="wa" maxlength="30" inputmode="tel"></div>
+    </div>
+    <div class="f"><label for="link">Catalogue link (shown on the cover)</label><input type="text" id="link" maxlength="80"></div>
+    <div class="f"><label for="logoFile">Logo picture (kept on this phone)</label><input type="file" id="logoFile" accept="image/png,image/jpeg,image/webp"></div>
+    <label class="chk" id="logoDelRow" hidden><input type="checkbox" id="logoDel"> Use the plain AH logo instead of my picture</label>
+  </fieldset>
+
+  <fieldset data-for="perm">
+    <legend>Permanent cover</legend>
+    <div class="f"><label for="tag">Main line</label><input type="text" id="tag" maxlength="70"></div>
+    <div class="f"><label for="dep">Deposit (%)</label><input type="number" id="dep" min="1" max="100" step="1" inputmode="numeric"></div>
+    <label class="chk"><input type="checkbox" id="flags"> Show the flags of China and The Gambia</label>
+    <div class="two">
+      <div class="f"><label for="s1t">Step 1</label><input type="text" id="s1t" maxlength="30"></div>
+      <div class="f"><label for="s1s">Step 1, small text</label><input type="text" id="s1s" maxlength="60"></div>
+      <div class="f"><label for="s2t">Step 2</label><input type="text" id="s2t" maxlength="30"></div>
+      <div class="f"><label for="s2s">Step 2, small text</label><input type="text" id="s2s" maxlength="60"></div>
+      <div class="f"><label for="s3t">Step 3</label><input type="text" id="s3t" maxlength="30"></div>
+      <div class="f"><label for="s3s">Step 3, small text</label><input type="text" id="s3s" maxlength="60"></div>
+      <div class="f"><label for="s4t">Step 4</label><input type="text" id="s4t" maxlength="30"></div>
+      <div class="f"><label for="s4s">Step 4, small text</label><input type="text" id="s4s" maxlength="60"></div>
+    </div>
+  </fieldset>
+
+  <fieldset data-for="group" hidden>
+    <legend>Group-order cover</legend>
+    <div class="two">
+      <div class="f"><label for="gpill">Label</label><input type="text" id="gpill" maxlength="30"></div>
+      <div class="f"><label for="gpre">Words before the date</label><input type="text" id="gpre" maxlength="20"></div>
+      <div class="f"><label for="gdate">Last day to order</label><input type="date" id="gdate"></div>
+      <div class="f"><label for="gtxt">Date as shown (you can change it)</label><input type="text" id="gtxt" maxlength="20"></div>
+    </div>
+    <div class="f"><label for="gsub">Small line under the date</label><input type="text" id="gsub" maxlength="110"></div>
+    <div class="f"><label for="gb1">Point 1</label><input type="text" id="gb1" maxlength="40"></div>
+    <div class="f"><label for="gb2">Point 2</label><input type="text" id="gb2" maxlength="40"></div>
+    <div class="f"><label for="gb3">Point 3</label><input type="text" id="gb3" maxlength="40"></div>
+  </fieldset>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var KEY = 'ahCoverV1', NAVY = '#1f3864', GOLD = '#d6aa2a', SOFT = '#c9d6ea', LINE = '#6f8bb8';
+  var $ = function (id) { return document.getElementById(id); };
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var DEFAULTS = {
+    brand: 'AH CHINA ORDERS', wa: '833683790', link: 'ahchinaorders.com/catalogue.html',
+    tag: 'Order from China. Collect in The Gambia.', dep: '75', flags: true,
+    s1t: 'Choose or request', s1s: 'Pick from our catalogue, or tell us what you want',
+    s2t: 'Pay {dep}% deposit', s2s: 'To confirm your order',
+    s3t: 'We order for you', s3s: 'Bought in China, shipped to us',
+    s4t: 'Collect and pay the rest', s4s: 'When it arrives',
+    gpill: 'GROUP ORDER OPEN', gpre: 'Order by', gdate: '', gtxt: '[25 Nov]',
+    gsub: 'We buy in bulk from China, so you get a better price. Order before the window closes.',
+    gb1: 'Pay a {dep}% deposit', gb2: 'We order for the whole group', gb3: 'Collect when it arrives'
+  };
+  var IDS = Object.keys(DEFAULTS);
+  var st = {}, design = 'perm', logoURL = '', logoImg = null;
+
+  function load() {
+    var o = null; try { o = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { o = null; }
+    st = {}; IDS.forEach(function (k) { st[k] = (o && o[k] !== undefined && o[k] !== null) ? o[k] : DEFAULTS[k]; });
+    logoURL = (o && typeof o.logo === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(o.logo)) ? o.logo : '';
+  }
+  function save() {
+    var o = {}; IDS.forEach(function (k) { o[k] = st[k]; }); o.logo = logoURL;
+    try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) { status('Your changes could not be kept on this phone (storage is full).', true); }
+  }
+  function status(t, bad) { var s = $('status'); s.textContent = t || ''; s.style.color = bad ? '#b3261e' : '#1b5e20'; }
+
+  /* ---------- drawing (everything is drawn on one canvas, so the picture you see is the picture you download) ---------- */
+  var cv = $('cv'), ctx = cv.getContext('2d');
+  var FONT = '"Space Grotesk","Inter","Segoe UI",Roboto,Arial,sans-serif';
+  var BODY = '"Inter","Segoe UI",Roboto,Arial,sans-serif';
+  function font(c, w, s, fam) { c.font = w + ' ' + s + 'px ' + (fam || BODY); }
+  function spacing(c, px) { if ('letterSpacing' in c) c.letterSpacing = px + 'px'; }
+  function width(c, t, px) { spacing(c, px || 0); var w = c.measureText(t).width; if (px && !('letterSpacing' in c)) w += px * t.length; return w; }
+  function txt(c, t, x, y, color, align, px) { c.fillStyle = color; c.textAlign = align || 'left'; c.textBaseline = 'alphabetic'; spacing(c, px || 0); c.fillText(t, x, y); spacing(c, 0); }
+  function wrap(c, t, maxW, maxLines) {
+    var words = String(t || '').split(/\s+/).filter(Boolean), lines = [], cur = '';
+    words.forEach(function (w) {
+      var tr = cur ? cur + ' ' + w : w;
+      if (c.measureText(tr).width <= maxW || !cur) cur = tr; else { lines.push(cur); cur = w; }
+    });
+    if (cur) lines.push(cur);
+    if (maxLines && lines.length > maxLines) { lines = lines.slice(0, maxLines); lines[maxLines - 1] = lines[maxLines - 1].replace(/\s*\S*$/, '') + '…'; }
+    return lines;
+  }
+  function sub(t) { return String(t || '').replace(/\{dep\}/g, String(st.dep || '').replace(/[^\d.]/g, '')); }
+  function roundRectPath(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+
+  var STARS = [
+    '5.00,2.00 5.67,4.07 7.85,4.07 6.09,5.35 6.76,7.43 5.00,6.15 3.24,7.43 3.91,5.35 2.15,4.07 4.33,4.07',
+    '9.14,2.51 9.62,1.97 9.25,1.34 9.91,1.63 10.39,1.08 10.33,1.80 11.00,2.09 10.29,2.25 10.22,2.97 9.85,2.35',
+    '11.01,4.14 11.66,3.82 11.56,3.10 12.07,3.62 12.72,3.30 12.38,3.95 12.88,4.47 12.17,4.34 11.83,4.99 11.73,4.27',
+    '11.04,6.73 11.76,6.70 11.96,6.00 12.21,6.68 12.94,6.66 12.37,7.10 12.62,7.79 12.01,7.38 11.44,7.83 11.64,7.13',
+    '9.22,8.38 9.90,8.63 10.35,8.06 10.32,8.79 11.00,9.05 10.30,9.24 10.26,9.96 9.87,9.36 9.16,9.55 9.62,8.98'
+  ];
+  function flagChina(c, x, y) {   // 30 x 20
+    c.save(); roundRectPath(c, x, y, 30, 20, 2); c.clip();
+    c.fillStyle = '#de2910'; c.fillRect(x, y, 30, 20); c.fillStyle = '#ffde00';
+    STARS.forEach(function (s) { var p = s.split(' ').map(function (q) { return q.split(',').map(Number); }); c.beginPath(); p.forEach(function (q, i) { if (i) c.lineTo(x + q[0], y + q[1]); else c.moveTo(x + q[0], y + q[1]); }); c.closePath(); c.fill(); });
+    c.restore();
+  }
+  function flagGambia(c, x, y) {
+    c.save(); roundRectPath(c, x, y, 30, 20, 2); c.clip();
+    c.fillStyle = '#ce1126'; c.fillRect(x, y, 30, 6.67);
+    c.fillStyle = '#ffffff'; c.fillRect(x, y + 6.67, 30, 1.11);
+    c.fillStyle = '#0c1c8c'; c.fillRect(x, y + 7.78, 30, 4.44);
+    c.fillStyle = '#ffffff'; c.fillRect(x, y + 12.22, 30, 1.11);
+    c.fillStyle = '#3a7728'; c.fillRect(x, y + 13.33, 30, 6.67);
+    c.restore();
+  }
+  function plane(c, x, y) {   // 22 x 22 at x,y
+    c.save(); c.translate(x, y); c.scale(22 / 24, 22 / 24); c.strokeStyle = GOLD; c.lineWidth = 2; c.lineJoin = 'round'; c.lineCap = 'round';
+    c.stroke(new Path2D('M3 11.5 21 3l-5 18-4.2-6.3L3 11.5Z')); c.stroke(new Path2D('M11.8 14.7 21 3')); c.restore();
+  }
+  function logo(c, x, y, s) {   // the logo picture, or the plain AH badge
+    if (logoImg) { c.drawImage(logoImg, x, y, s, s); return; }
+    c.save(); c.fillStyle = NAVY; c.beginPath(); c.arc(x + s / 2, y + s / 2, s / 2, 0, 6.2832); c.fill();
+    c.strokeStyle = '#c9a227'; c.lineWidth = Math.max(1, s * 0.016); c.beginPath(); c.arc(x + s / 2, y + s / 2, s * 0.435, 0, 6.2832); c.stroke();
+    c.restore(); font(c, 700, s * 0.37, FONT); txt(c, 'AH', x + s / 2, y + s * 0.62, '#ffffff', 'center');
+  }
+  function header(c, W) {
+    c.fillStyle = GOLD; c.fillRect(0, 0, W, 6);
+    logo(c, 90, 22, 34); font(c, 700, 12); txt(c, String(st.brand || '').toUpperCase(), 134, 44, GOLD, 'left', 3);
+  }
+  function drawPerm(c) {
+    var W = 820, H = 312, PX = 90, CW = 640;
+    c.fillStyle = NAVY; c.fillRect(0, 0, W, H); header(c, W);
+    // main line: one line if it fits, else two
+    var size = 28; font(c, 700, size, FONT);
+    var lines = wrap(c, st.tag, CW, 2); if (lines.length > 1) { size = 24; font(c, 700, size, FONT); lines = wrap(c, st.tag, CW, 2); }
+    var y = 78; lines.forEach(function (l) { txt(c, l, PX, y, '#ffffff'); y += size * 1.12; });
+    var tagBottom = y - size * 0.4;
+    // bottom: contact line, then the four steps
+    var contactY = H - 16; font(c, 600, 12);
+    txt(c, 'WhatsApp ' + st.wa, PX, contactY, '#ffffff'); txt(c, st.link, PX + CW, contactY, '#ffffff', 'right');
+    var colW = (CW - 14 * 3) / 4, steps = [[st.s1t, st.s1s], [st.s2t, st.s2s], [st.s3t, st.s3s], [st.s4t, st.s4s]], maxSub = 1;
+    font(c, 400, 11.5);
+    var subLines = steps.map(function (s) { var l = wrap(c, sub(s[1]), colW, 2); maxSub = Math.max(maxSub, l.length); return l; });
+    var stepsH = 26 + 8 + 16 + 4 + maxSub * 15, stepsTop = contactY - 12 - 14 - stepsH;
+    steps.forEach(function (s, i) {
+      var x = PX + i * (colW + 14);
+      c.fillStyle = GOLD; c.beginPath(); c.arc(x + 13, stepsTop + 13, 13, 0, 6.2832); c.fill();
+      font(c, 700, 14); txt(c, String(i + 1), x + 13, stepsTop + 18, NAVY, 'center');
+      var tt = sub(s[0]), ts = 14; font(c, 700, ts); while (c.measureText(tt).width > colW && ts > 10) { ts -= 0.5; font(c, 700, ts); } txt(c, tt, x, stepsTop + 26 + 8 + 12, '#ffffff');
+      font(c, 400, 11.5); subLines[i].forEach(function (l, j) { txt(c, l, x, stepsTop + 26 + 8 + 16 + 4 + 10 + j * 15, SOFT); });
+    });
+    // route (between the main line and the steps)
+    var cy = Math.round((tagBottom + stepsTop) / 2), L = PX, R = PX + CW;
+    font(c, 700, 12);
+    var fl = !!st.flags, x0 = L, x1 = R;
+    if (fl) { flagChina(c, L, cy - 10); x0 = L + 30 + 10; }
+    var w1 = width(c, 'CHINA', 2); txt(c, 'CHINA', x0, cy + 4, SOFT, 'left', 2); x0 += w1 + 12;
+    if (fl) { flagGambia(c, R - 30, cy - 10); x1 = R - 30 - 10; }
+    var w2 = width(c, 'THE GAMBIA', 2); txt(c, 'THE GAMBIA', x1, cy + 4, SOFT, 'right', 2); x1 -= w2 + 12;
+    var mid = (x0 + x1) / 2;
+    c.strokeStyle = LINE; c.lineWidth = 2; c.setLineDash([6, 5]);
+    c.beginPath(); c.moveTo(x0, cy); c.lineTo(mid - 20, cy); c.moveTo(mid + 20, cy); c.lineTo(x1, cy); c.stroke(); c.setLineDash([]);
+    plane(c, mid - 11, cy - 11);
+  }
+  function drawGroup(c) {
+    var W = 820, H = 312, PX = 90, CW = 640;
+    c.fillStyle = NAVY; c.fillRect(0, 0, W, H); header(c, W);
+    font(c, 700, 12); var pt = String(st.gpill || '').toUpperCase(), pw = width(c, pt, 2) + 24;
+    roundRectPath(c, PX + CW - pw, 22, pw, 28, 14); c.fillStyle = GOLD; c.fill(); txt(c, pt, PX + CW - pw / 2 + 1, 40.5, NAVY, 'center', 2);
+    var contactY = H - 16; font(c, 600, 12);
+    txt(c, 'Order on WhatsApp ' + st.wa, PX, contactY, '#ffffff'); txt(c, st.link, PX + CW, contactY, '#ffffff', 'right');
+    // the three points
+    var colW = (CW - 28) / 3, pts = [st.gb1, st.gb2, st.gb3]; font(c, 700, 13);
+    var pl = pts.map(function (p) { return wrap(c, sub(p), colW - 14, 2); }), nl = Math.max(1, pl[0].length, pl[1].length, pl[2].length), ptsTop = contactY - 12 - 16 - nl * 16;
+    pl.forEach(function (ls, i) { var x = PX + i * (colW + 14); c.fillStyle = GOLD; c.beginPath(); c.arc(x + 4, ptsTop + 8, 4, 0, 6.2832); c.fill(); font(c, 700, 13); ls.forEach(function (l, j) { txt(c, l, x + 14, ptsTop + 12 + j * 16, '#ffffff'); }); });
+    // big date line and the small line
+    var head = (String(st.gpre || '').trim() + ' ' + String(st.gtxt || '').trim()).trim(), hs = 52;
+    font(c, 700, hs, FONT); while (c.measureText(head).width > CW && hs > 30) { hs -= 2; font(c, 700, hs, FONT); }
+    font(c, 600, 18); var sl = wrap(c, st.gsub, CW, 2);
+    var blockH = hs * 1.05 + 10 + sl.length * 23, top = 62, bot = ptsTop - 14, y0 = top + Math.max(0, (bot - top - blockH) / 2);
+    font(c, 700, hs, FONT); txt(c, head, PX, y0 + hs * 0.9, '#ffffff');
+    font(c, 600, 18); sl.forEach(function (l, j) { txt(c, l, PX, y0 + hs * 1.05 + 10 + 17 + j * 23, SOFT); });
+  }
+  function drawProfile(c) { c.fillStyle = NAVY; c.fillRect(0, 0, 1024, 1024); logo(c, 0, 0, 1024); }
+
+  function render() {
+    var c = ctx, big = design === 'profile';
+    cv.width = big ? 1024 : 1640; cv.height = big ? 1024 : 624; cv.className = big ? 'round' : '';
+    c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, cv.width, cv.height);
+    if (!big) c.setTransform(2, 0, 0, 2, 0, 0);
+    if (design === 'perm') drawPerm(c); else if (design === 'group') drawGroup(c); else drawProfile(c);
+    $('sizeNote').textContent = big ? 'Profile picture, 1024 × 1024. Facebook shows it as a circle.' : 'Cover, 1640 × 624 (Facebook shows about 820 × 312 on a computer, and cuts a little from the sides on a phone, so the words are kept in the middle).';
+  }
+
+  /* ---------- fields ---------- */
+  function fill() { IDS.forEach(function (k) { var e = $(k); if (!e) return; if (e.type === 'checkbox') e.checked = !!st[k]; else e.value = st[k]; }); $('logoDelRow').hidden = !logoURL; $('logoDel').checked = false; }
+  function dateText(v) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || ''); return m ? (parseInt(m[3], 10) + ' ' + MONTHS[parseInt(m[2], 10) - 1]) : ''; }
+  IDS.forEach(function (k) {
+    var e = $(k); if (!e) return;
+    e.addEventListener('input', function () {
+      st[k] = e.type === 'checkbox' ? e.checked : e.value;
+      if (k === 'gdate') { var t = dateText(e.value); if (t) { st.gtxt = t; $('gtxt').value = t; } }
+      save(); render();
+    });
+  });
+  function setLogo(url) {
+    logoURL = url || ''; logoImg = null;
+    if (!logoURL) { fill(); save(); render(); return; }
+    var im = new Image(); im.onload = function () { logoImg = im; $('logoDelRow').hidden = false; save(); render(); }; im.onerror = function () { logoURL = ''; status('Could not read that picture. Use a PNG or JPG file.', true); render(); }; im.src = logoURL;
+  }
+  $('logoFile').addEventListener('change', function () {
+    var f = this.files && this.files[0]; if (!f) return;
+    var r = new FileReader(); r.onload = function () {
+      var im = new Image(); im.onload = function () {   // keep it small: at most 600 px on the long side
+        var k = Math.min(1, 600 / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = Math.max(1, Math.round(im.width * k)); c.height = Math.max(1, Math.round(im.height * k));
+        c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); setLogo(c.toDataURL('image/png')); status('Logo ready.');
+      }; im.onerror = function () { status('Could not read that picture. Use a PNG or JPG file.', true); }; im.src = r.result;
+    }; r.readAsDataURL(f);
+  });
+  $('logoDel').addEventListener('change', function () { if (this.checked) { setLogo(''); status('Using the plain AH logo.'); } });
+  $('reset').addEventListener('click', function () {
+    var keep = { brand: st.brand, wa: st.wa, link: st.link, dep: st.dep, gdate: st.gdate, gtxt: st.gtxt };
+    IDS.forEach(function (k) { st[k] = DEFAULTS[k]; }); Object.keys(keep).forEach(function (k) { st[k] = keep[k]; });
+    save(); fill(); render(); status('The original words are back (your number, link, deposit and date were kept).');
+  });
+  document.querySelectorAll('.tabs button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      design = b.getAttribute('data-d');
+      document.querySelectorAll('.tabs button').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+      document.querySelectorAll('fieldset[data-for]').forEach(function (f) { f.hidden = f.getAttribute('data-for') !== design; });
+      $('dl').textContent = design === 'profile' ? 'Download profile picture' : design === 'group' ? 'Download group-order cover' : 'Download cover'; status(''); render();
+    });
+  });
+  $('dl').addEventListener('click', function () {
+    var name = design === 'profile' ? 'ah-china-orders-profile.png' : design === 'group' ? 'ah-china-orders-cover-group-order.png' : 'ah-china-orders-cover.png';
+    cv.toBlob(function (b) {
+      if (!b) { status('Could not make the picture. Try again.', true); return; }
+      var a = document.createElement('a'), u = URL.createObjectURL(b); a.href = u; a.download = name; document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(u); a.remove(); }, 4000); status('Downloaded: ' + name + '. Find it in your Downloads, then upload it to your Facebook page.');
+    }, 'image/png');
+  });
+
+  /* ---------- handed over by the store (same way as the poster) ---------- */
+  function handoff() {
+    if (!/^#h=1\b/.test(location.hash || '')) return null;
+    try { if (history.replaceState) history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+    var o = null; try { o = JSON.parse(localStorage.getItem('ahToolHandoff') || 'null'); localStorage.removeItem('ahToolHandoff'); } catch (e) { return null; }
+    if (!o || o.k !== 'c' || typeof o.t !== 'number' || Math.abs(Date.now() - o.t) > 600000 || !o.payload) return null;
+    var bar = document.createElement('div'); bar.id = 'back-store'; var a = document.createElement('a'); a.href = './../'; a.textContent = '← Back to the store'; bar.appendChild(a); document.body.insertBefore(bar, document.body.firstChild);
+    return o;
+  }
+  function clean(s, n) { return String(s == null ? '' : s).replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, n); }
+  load();
+  var ho = handoff();
+  if (ho && ho.payload && ho.payload.v === 1) {
+    var p = ho.payload;
+    if (clean(p.name, 40)) st.brand = clean(p.name, 40).toUpperCase();
+    if (clean(p.whatsapp, 30)) st.wa = clean(p.whatsapp, 30);
+    if (clean(p.link, 80)) st.link = clean(p.link, 80).replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+    if (+p.deposit > 0 && +p.deposit <= 100) st.dep = String(Math.round(+p.deposit));
+    if (/^\d{4}-\d{2}-\d{2}$/.test(p.groupEnd || '')) { st.gdate = p.groupEnd; st.gtxt = dateText(p.groupEnd); }
+    if (clean(p.groupLabel, 30)) st.gpill = clean(p.groupLabel, 30).toUpperCase();
+    if (typeof p.logo === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(p.logo) && p.logo.length < 1500000) logoURL = p.logo;
+    save();
+  }
+  fill(); render();
+  if (logoURL) setLogo(logoURL);
+  if (ho) status('Filled from the store: your number, link, deposit' + (st.gdate ? ' and the group-order date' : '') + '.');
+})();
+</script>
+</body>
+</html>
