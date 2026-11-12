@@ -127,7 +127,6 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
 <header><div class="in"><div class="brand"><img id="logo" alt="" hidden><div class="bt"><h1 id="nm">AH CHINA ORDERS</h1><div class="sub" id="sub">Products in stock</div></div></div><div class="acts" id="acts"></div></div></header>
 <main>
   <div class="tools" id="tools" hidden><input type="search" id="q" placeholder="Search: name, size or code" aria-label="Search the products"><div class="chips" id="chips" role="group" aria-label="Groups"></div></div>
-  <div class="bulk" id="bulk" hidden></div>
   <div class="count" id="count" aria-live="polite"></div>
   <div id="out"><div class="msg">Loading the products…</div></div>
   <p class="note" id="foot">Prices in Dalasi. Stock changes during the day: ask us before you come.</p>
@@ -220,7 +219,6 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
     var list = (data.items || []).filter(function (x) {
       return (group === 'All' || x.group === group) && (!q || ((x.hay || x.name) + ' ' + x.code + ' ' + x.group + ' ' + x.sizes + ' ' + (x.desc || '')).toLowerCase().indexOf(q) >= 0);
     });
-    (function () { var bl = '', bx = $('bulk'); (data.items || []).some(function (x) { if (ord() && x.ws === 'open' && typeof x.ob === 'string' && x.ob.trim()) { bl = x.ob.trim().slice(0, 140); return true; } return false; }); if (bx) { bx.textContent = bl; bx.hidden = !bl; } })();
     $('count').textContent = (data.items || []).length ? list.length + ' product' + (list.length === 1 ? '' : 's') : '';
     if (!(data.items || []).length) { $('out').innerHTML = (ord() ? '<div class="msg">No products to order right now. Come back soon.</div>' : '<div class="msg">Nothing in stock to show right now. Come back soon.</div>'); return; }
     if (!list.length) { $('out').innerHTML = '<div class="msg">Nothing matches your search.</div>'; return; }
@@ -254,6 +252,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
     });
     return items;
   }
+  function bulkBox(x) { return ord() && x.ws === 'open' && typeof x.ob === 'string' && x.ob.trim() ? '<div class="bulk">' + esc(x.ob.trim().slice(0, 140)) + '</div>' : ''; }
   function winLine(x) {
     if (!x.ws) return '';
     var lab = typeof x.ol === 'string' && x.ol.trim() ? esc(x.ol.trim().slice(0, 40)) + ': ' : '';
@@ -304,7 +303,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
       '<div class="in">' + (sea(x) ? '<span class="tag">' + SEA + '</span>' : '') + (x.pTag ? '<span class="tag promo">' + esc(x.pTag) + '</span>' : '') + '<h2 id="dlgT">' + esc(x.name) + '</h2>' +
       (x.code ? '<div class="sz">' + esc(x.code) + '</div>' : '') +
       (P0 ? '<div class="opts">' + optBlock(P0) + '</div>' : '') +
-      '<div class="pr"><div class="p-price"><div class="k">Price</div><div class="v">' + (x.was ? '<s class="was">' + D(x.was) + '</s>' : '') + D(x.price) + '</div></div></div>' + winLine(x) + goalLine(x) +
+      '<div class="pr"><div class="p-price"><div class="k">Price</div><div class="v">' + (x.was ? '<s class="was">' + D(x.was) + '</s>' : '') + D(x.price) + '</div></div></div>' + winLine(x) + goalLine(x) + bulkBox(x) +
       (ord() && x.ws !== 'closed' ? '<div class="howto"><b>How ordering works</b><br>' + (sea(x) ? 'This product is made to order and comes by sea. ' : '') + (full(x) ? 'Pay the full price (' + D(x.price) + ') to order. We order it from China for you' + (whenOf(x) ? '; it arrives in about ' + esc(whenOf(x)) : '') + '.' : 'Pay a deposit of ' + D(depOf(x)) + ' (' + pct(x) + ') to order. We order it from China for you' + (whenOf(x) ? '; it arrives in about ' + esc(whenOf(x)) : '') + '. Pay the rest (' + D(Number(x.price) - depOf(x)) + ') when it arrives.') + '</div>' : '<div class="left">' + esc(leftText(x)) + '</div>') +
       (x.sizes ? '<h3>Sizes / colours</h3><p class="txt">' + esc(x.sizes) + '</p>' : '') +
       (x.od ? '<h3>This option</h3><p class="txt">' + esc(x.od) + '</p>' : '') +
