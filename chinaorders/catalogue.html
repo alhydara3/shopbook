@@ -70,7 +70,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
 .was{text-decoration:line-through;color:#6b7280;font-weight:400;font-size:.78em;margin-right:6px}
 .tag.promo{color:#8a1c12;background:#fdecea;border-color:#f3b9b3}
 .bulk{margin:0 0 10px;padding:10px 12px;border-radius:10px;background:#fff6dc;border:1px solid #e3c36a;color:#4a3500;font-size:14px;font-weight:600;line-height:1.4}.goal.mb{font-weight:700}
-.win{font-size:13px;font-weight:700;color:#14532d;background:#e6f4ea;border:1px solid #a8d5b5;border-radius:8px;padding:5px 10px;margin-top:6px;line-height:1.35}.win.soon{color:#6b4100;background:#fdf0d5;border-color:#f3d9a4}.win.closed{color:#4b5563;background:#eef0f3;border-color:#d1d5db}
+.win{font-size:13px;font-weight:700;color:#14532d;background:#e6f4ea;border:1px solid #a8d5b5;border-radius:8px;padding:5px 10px;margin-top:6px;line-height:1.35}.win.urgent{color:#8a1c12;background:#fdecea;border-color:#f3b9b3}.win.soon{color:#6b4100;background:#fdf0d5;border-color:#f3d9a4}.win.closed{color:#4b5563;background:#eef0f3;border-color:#d1d5db}
 .goal{margin-top:6px;font-size:13px;font-weight:700}.goal .gb{height:8px;border-radius:999px;background:#e5e7eb;overflow:hidden;margin-bottom:3px}.goal .gb i{display:block;height:100%;background:#1b7f3b}
 .msg{background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px;text-align:center;color:var(--muted)}
 .msg button{margin-top:12px;font:inherit;font-weight:700;border:0;border-radius:10px;background:var(--navy);color:#fff;padding:10px 18px;min-height:44px;cursor:pointer}
@@ -259,7 +259,7 @@ input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;bord
     if (x.ws === 'soon') return '<div class="win soon">' + lab + 'Orders open on ' + dm(x.of) + '</div>';
     if (x.ws === 'closed') return '<div class="win closed">' + lab + 'Closed · orders ended on ' + dm(x.ot) + '</div>';
     var d = okD(x.ot) ? daysTo(x.ot) : null;
-    return '<div class="win">' + lab + (d == null ? 'Orders open' : 'Order by ' + dm(x.ot) + ' · ' + (d <= 0 ? 'last day' : d === 1 ? '1 day left' : d + ' days left')) + '</div>';
+    return '<div class="win' + (d != null && d <= 2 ? ' urgent' : '') + '">' + lab + (d == null ? 'Orders open' : 'Order by ' + dm(x.ot) + ' · ' + (d <= 0 ? 'last day' : d === 1 ? '1 day left' : d + ' days left')) + '</div>';
   }
   function goalLine(x) {
     if (!ord()) return '';
