@@ -228,6 +228,7 @@ const ST = () => Object.assign({}, DEFAULT_SETTINGS, S.settings || {});
 /* Pre-order store (settings.preorder.on): buyers order from the catalogue and pay a deposit, the owner orders the goods
    from China, and the buyer pays the balance on arrival. Each order is a sale with po: {status, at: {status: time}};
    stock does not limit an order. A shop with stock (preorder off) works exactly as before. */
+const PO_LOCKED = () => !PO() && /siaka/i.test(String(ST().business || '') + ' ' + String((window.SHOP_CONFIG || {}).key || ''));   // Siaka's store stays a shop with stock
 const PO = () => !!(ST().preorder && ST().preorder.on);
 const PO_DEP = () => { const d = num((ST().preorder || {}).deposit); return d > 0 && d <= 1 ? d : 0.5; };
 const PO_WHEN = () => String((ST().preorder || {}).arrive || '').trim().slice(0, 40);
@@ -1477,12 +1478,13 @@ function ordersSheet(filt) {
   });
 }
 function poPanel() {
-  if (!S.isOwner) return '';
+  if (!S.isOwner || PO_LOCKED()) return '';
   return `<div class="panel"><div class="spread"><h2>Store type</h2><span class="pill ${PO() ? 'ok' : ''}">${PO() ? 'Orders from China' : 'Shop with stock'}</span></div>
     <p class="note">${PO() ? `${isFull(PO_DEP()) ? 'Buyers pay the <b>full price</b> when they order; you order the goods from China; they collect when the goods arrive (' : `Buyers order and pay a deposit of <b>${P(PO_DEP())}</b>; you order the goods from China; they pay the rest when the goods arrive (`}${esc(PO_WHEN() ? 'about ' + PO_WHEN() : 'arrival time not set')}). Orders are not limited by stock. Follow them in Sell → Orders.` : 'A shop that sells goods it already has. "Orders from China" is for a store that takes orders with a deposit and buys the goods afterwards.'}</p>
     ${OWN() ? `<button type="button" class="btn" data-act="poSet" style="margin-top:8px">${PO() ? 'Change the deposit %, arrival time or store type' : 'Change the store type'}</button>` : ''}</div>`;
 }
 function poSetSheet() {
+  if (PO_LOCKED()) return;
   openSheet('Store type', `<form id="poF" class="list" style="gap:12px">
     <label class="row" style="flex-wrap:nowrap"><input type="radio" name="poM" value="shop" style="width:22px;min-height:22px" ${PO() ? '' : 'checked'}> Shop with stock: sells goods it already has (pieces left limit the sales)</label>
     <label class="row" style="flex-wrap:nowrap"><input type="radio" name="poM" value="order" style="width:22px;min-height:22px" ${PO() ? 'checked' : ''}> Orders from China: buyers pay a deposit, you order the goods, they pay the rest on arrival</label>
