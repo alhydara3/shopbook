@@ -46,6 +46,7 @@ legend { font-size: 13px; font-weight: 700; padding: 0 6px; }
   <div class="tabs" role="group" aria-label="Design">
     <button type="button" data-d="perm" aria-pressed="true">Permanent cover</button>
     <button type="button" data-d="group" aria-pressed="false">Group-order cover</button>
+    <button type="button" data-d="share" aria-pressed="false">Share picture</button>
     <button type="button" data-d="profile" aria-pressed="false">Profile picture</button>
   </div>
   <div class="stage">
@@ -69,7 +70,13 @@ legend { font-size: 13px; font-weight: 700; padding: 0 6px; }
     <label class="chk" id="logoDelRow" hidden><input type="checkbox" id="logoDel"> Use the plain AH logo instead of my picture</label>
   </fieldset>
 
-  <fieldset data-for="perm">
+  <fieldset data-for="share" hidden>
+    <legend>Share picture (WhatsApp and Status)</legend>
+    <div class="f"><label for="ssz">Size</label><select id="ssz" style="font:inherit;font-size:15px;padding:9px 10px;border:1px solid #a9b6d3;border-radius:8px;background:#fff;color:#14264a"><option value="chat">Chat or feed (4:5, 1080 × 1350)</option><option value="status">Status or Stories (9:16, 1080 × 1920)</option></select></div>
+    <p class="note" style="margin:0 0 10px">The words come from the Permanent cover boxes below. Change them there.</p>
+  </fieldset>
+
+  <fieldset data-for="perm share">
     <legend>Permanent cover</legend>
     <div class="f"><label for="tag">Main line</label><input type="text" id="tag" maxlength="70"></div>
     <div class="f"><label for="dep">Deposit (%)</label><input type="number" id="dep" min="1" max="100" step="1" inputmode="numeric"></div>
@@ -116,7 +123,7 @@ legend { font-size: 13px; font-weight: 700; padding: 0 6px; }
     s4t: 'Collect and pay the rest', s4s: 'When it arrives',
     gpill: 'GROUP ORDER OPEN', gpre: 'Order by', gdate: '', gtxt: '[25 Nov]',
     gsub: 'We buy in bulk, so you get a better price. Order before the window closes.',
-    gb1: 'Pay a {dep}% deposit', gb2: 'We order for the whole group', gb3: 'Collect when it arrives'
+    gb1: 'Pay a {dep}% deposit', gb2: 'We order for the whole group', gb3: 'Collect when it arrives', ssz: 'chat'
   };
   var IDS = Object.keys(DEFAULTS);
   var st = {}, design = 'perm', logoURL = '', logoImg = null;
@@ -243,15 +250,43 @@ legend { font-size: 13px; font-weight: 700; padding: 0 6px; }
     font(c, 700, hs, FONT); txt(c, head, PX, y0 + hs * 0.9, '#ffffff');
     font(c, 600, 18); sl.forEach(function (l, j) { txt(c, l, PX, y0 + hs * 1.05 + 10 + 17 + j * 23, SOFT); });
   }
+  function route(c, L, R, cy) {
+    font(c, 700, 13); var x0 = L, x1 = R, fl = !!st.flags;
+    if (fl) { flagChina(c, L, cy - 10); x0 = L + 40; }
+    txt(c, 'CHINA', x0, cy + 4.5, SOFT, 'left', 2); x0 += width(c, 'CHINA', 2) + 12;
+    if (fl) { flagGambia(c, R - 30, cy - 10); x1 = R - 40; }
+    txt(c, 'THE GAMBIA', x1, cy + 4.5, SOFT, 'right', 2); x1 -= width(c, 'THE GAMBIA', 2) + 12;
+    var mid = (x0 + x1) / 2; c.strokeStyle = LINE; c.lineWidth = 2; c.setLineDash([6, 5]);
+    c.beginPath(); c.moveTo(x0, cy); c.lineTo(mid - 20, cy); c.moveTo(mid + 20, cy); c.lineTo(x1, cy); c.stroke(); c.setLineDash([]); plane(c, mid - 11, cy - 11);
+  }
+  function drawShare(c, H) {
+    var W = 540, PX = 40, CW = 460, CX = W / 2;
+    c.fillStyle = NAVY; c.fillRect(0, 0, W, H); c.fillStyle = GOLD; c.fillRect(0, 0, W, 6);
+    var top = H > 1000 ? 70 : 34;
+    logo(c, CX - 26, top, 52); font(c, 700, 13); txt(c, String(st.brand || '').toUpperCase(), CX, top + 52 + 26, GOLD, 'center', 3);
+    var size = 32; font(c, 700, size, FONT); var lines = wrap(c, st.tag, CW, 3);
+    var y = top + 52 + 26 + 50; lines.forEach(function (l) { txt(c, l, CX, y, '#ffffff', 'center'); y += size * 1.2; });
+    var rY = y + 14; route(c, PX, PX + CW, rY);
+    var footTop = H - (H > 1000 ? 130 : 96), stepsTop = rY + 36, avail = footTop - stepsTop - 10, rowH = Math.min(115, avail / 4); stepsTop += (avail - rowH * 4) / 2;
+    var steps = [[st.s1t, st.s1s], [st.s2t, st.s2s], [st.s3t, st.s3s], [st.s4t, st.s4s]];
+    steps.forEach(function (s, i) {
+      var ry = stepsTop + i * rowH + (rowH - 62) / 2;
+      c.fillStyle = GOLD; c.beginPath(); c.arc(PX + 16, ry + 16, 16, 0, 6.2832); c.fill(); font(c, 700, 17); txt(c, String(i + 1), PX + 16, ry + 22, NAVY, 'center');
+      var ts = 19; font(c, 700, ts); var tt = sub(s[0]); while (c.measureText(tt).width > CW - 50 && ts > 12) { ts -= 0.5; font(c, 700, ts); }
+      txt(c, tt, PX + 50, ry + 22, '#ffffff'); font(c, 400, 14); wrap(c, sub(s[1]), CW - 50, 2).forEach(function (l, j) { txt(c, l, PX + 50, ry + 42 + j * 18, SOFT); });
+    });
+    c.strokeStyle = LINE; c.lineWidth = 1; c.beginPath(); c.moveTo(PX, footTop); c.lineTo(PX + CW, footTop); c.stroke();
+    font(c, 700, 20); txt(c, 'WhatsApp ' + st.wa, CX, footTop + 36, '#ffffff', 'center'); font(c, 600, 15); txt(c, st.link, CX, footTop + 62, GOLD, 'center');
+  }
   function drawProfile(c) { c.fillStyle = NAVY; c.fillRect(0, 0, 1024, 1024); logo(c, 0, 0, 1024); }
 
   function render() {
-    var c = ctx, big = design === 'profile';
-    cv.width = big ? 1024 : 1640; cv.height = big ? 1024 : 624; cv.className = big ? 'round' : '';
+    var c = ctx, big = design === 'profile', shr = design === 'share', sH = st.ssz === 'status' ? 960 : 675;
+    cv.width = big ? 1024 : shr ? 1080 : 1640; cv.height = big ? 1024 : shr ? sH * 2 : 624; cv.className = big ? 'round' : '';
     c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, cv.width, cv.height);
     if (!big) c.setTransform(2, 0, 0, 2, 0, 0);
-    if (design === 'perm') drawPerm(c); else if (design === 'group') drawGroup(c); else drawProfile(c);
-    $('sizeNote').textContent = big ? 'Profile picture, 1024 × 1024. Facebook shows it as a circle.' : 'Cover, 1640 × 624 (Facebook shows about 820 × 312 on a computer, and cuts a little from the sides on a phone, so the words are kept in the middle).';
+    if (design === 'perm') drawPerm(c); else if (design === 'share') drawShare(c, sH); else if (design === 'group') drawGroup(c); else drawProfile(c);
+    $('sizeNote').textContent = shr ? 'Share picture, 1080 × ' + (sH * 2) + '. Send it on WhatsApp with the message as the caption, or post it as a Status.' : big ? 'Profile picture, 1024 × 1024. Facebook shows it as a circle.' : 'Cover, 1640 × 624 (Facebook shows about 820 × 312 on a computer, and cuts a little from the sides on a phone, so the words are kept in the middle).';
   }
 
   /* ---------- fields ---------- */
@@ -289,12 +324,12 @@ legend { font-size: 13px; font-weight: 700; padding: 0 6px; }
     b.addEventListener('click', function () {
       design = b.getAttribute('data-d');
       document.querySelectorAll('.tabs button').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
-      document.querySelectorAll('fieldset[data-for]').forEach(function (f) { f.hidden = f.getAttribute('data-for') !== design; });
-      $('dl').textContent = design === 'profile' ? 'Download profile picture' : design === 'group' ? 'Download group-order cover' : 'Download cover'; status(''); render();
+      document.querySelectorAll('fieldset[data-for]').forEach(function (f) { f.hidden = f.getAttribute('data-for').split(' ').indexOf(design) < 0; });
+      $('dl').textContent = design === 'share' ? 'Download share picture' : design === 'profile' ? 'Download profile picture' : design === 'group' ? 'Download group-order cover' : 'Download cover'; status(''); render();
     });
   });
   $('dl').addEventListener('click', function () {
-    var name = design === 'profile' ? 'ah-china-orders-profile.png' : design === 'group' ? 'ah-china-orders-cover-group-order.png' : 'ah-china-orders-cover.png';
+    var name = design === 'share' ? 'ah-china-orders-share-' + (st.ssz === 'status' ? 'status' : 'chat') + '.png' : design === 'profile' ? 'ah-china-orders-profile.png' : design === 'group' ? 'ah-china-orders-cover-group-order.png' : 'ah-china-orders-cover.png';
     cv.toBlob(function (b) {
       if (!b) { status('Could not make the picture. Try again.', true); return; }
       var a = document.createElement('a'), u = URL.createObjectURL(b); a.href = u; a.download = name; document.body.appendChild(a); a.click();
